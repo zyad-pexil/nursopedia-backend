@@ -48,7 +48,11 @@ migrate = Migrate(app, db)
 with app.app_context():
     db.create_all()
 
+<<<<<<< HEAD
 # Serve uploaded receipts stored under configurable dir
+=======
+# Serve uploaded receipts stored under configurable dir via RECEIPTS_DIR
+>>>>>>> 341fbdd (feat: support Railway volume via DB_PATH and RECEIPTS_DIR; create dirs if missing)
 @app.route('/uploads/receipts/<path:filename>')
 def serve_receipts(filename):
     receipts_dir = os.getenv(

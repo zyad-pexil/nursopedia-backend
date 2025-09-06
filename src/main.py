@@ -35,21 +35,26 @@ app.register_blueprint(auth_bp, url_prefix='/api/auth')
 app.register_blueprint(content_bp, url_prefix='/api/content')
 app.register_blueprint(admin_bp, url_prefix='/api/admin')
 
-# uncomment if you need to use database
-app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(os.path.dirname(__file__), 'database', 'app.db')}"
+# Database configuration (supports external volume via DB_PATH)
+_db_default = os.path.join(os.path.dirname(__file__), 'database', 'app.db')
+db_path = os.getenv('DB_PATH', _db_default)
+os.makedirs(os.path.dirname(db_path), exist_ok=True)
+app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{db_path}"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db.init_app(app)
 migrate = Migrate(app, db)
-# ملاحظة: مع Flask-Migrate لا نحتاج db.create_all في الإنتاج. يمكن إبقاؤه للتطوير فقط.
 with app.app_context():
     db.create_all()
 
-# Serve uploaded receipts stored under src/database/receipts
+# Serve uploaded receipts stored under configurable dir
 @app.route('/uploads/receipts/<path:filename>')
 def serve_receipts(filename):
-    uploads_dir = os.path.join(os.path.dirname(__file__), 'database', 'receipts')
-    os.makedirs(uploads_dir, exist_ok=True)
-    return send_from_directory(uploads_dir, filename)
+    receipts_dir = os.getenv(
+        'RECEIPTS_DIR',
+        os.path.join(os.path.dirname(__file__), 'database', 'receipts')
+    )
+    os.makedirs(receipts_dir, exist_ok=True)
+    return send_from_directory(receipts_dir, filename)
 
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')

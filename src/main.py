@@ -36,10 +36,8 @@ app.register_blueprint(content_bp, url_prefix='/api/content')
 app.register_blueprint(admin_bp, url_prefix='/api/admin')
 
 # Database configuration (supports external volume via DB_PATH)
-# If DB_PATH is set (e.g., /data/app.db on Railway), use it; otherwise fallback to local file under src/database/app.db
 _db_default = os.path.join(os.path.dirname(__file__), 'database', 'app.db')
 db_path = os.getenv('DB_PATH', _db_default)
-# Ensure parent dir exists to avoid sqlite failing to create file path
 os.makedirs(os.path.dirname(db_path), exist_ok=True)
 app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{db_path}"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -48,11 +46,7 @@ migrate = Migrate(app, db)
 with app.app_context():
     db.create_all()
 
-<<<<<<< HEAD
 # Serve uploaded receipts stored under configurable dir
-=======
-# Serve uploaded receipts stored under configurable dir via RECEIPTS_DIR
->>>>>>> 341fbdd (feat: support Railway volume via DB_PATH and RECEIPTS_DIR; create dirs if missing)
 @app.route('/uploads/receipts/<path:filename>')
 def serve_receipts(filename):
     receipts_dir = os.getenv(

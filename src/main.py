@@ -15,6 +15,7 @@ from flask import Flask, send_from_directory
 from flask_cors import CORS
 from src.models.user import db
 from flask_migrate import Migrate
+from sqlalchemy import text
 from src.routes.user import user_bp
 from src.routes.auth import auth_bp
 from src.routes.content import content_bp
@@ -66,6 +67,14 @@ else:
 app.config['SQLALCHEMY_DATABASE_URI'] = db_uri
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+# Configure engine/pool options to better handle cold starts on Railway
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_pre_ping': True,           # validate connections before use
+    'pool_recycle': 280,             # recycle before MySQL 8 default wait_timeout (in secs)
+    'pool_size': int(os.getenv('DB_POOL_SIZE', 5)),
+    'max_overflow': int(os.getenv('DB_MAX_OVERFLOW', 5)),
+}
+
 # Configure max content length if needed (e.g., 10MB receipts)
 app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_CONTENT_LENGTH', 10 * 1024 * 1024))
 
@@ -96,7 +105,23 @@ def ensure_admin_exists():
         db.session.add(admin)
         db.session.commit()
 
+# Try connecting with retries to wait for MySQL readiness
+import time
+
+def wait_for_db(max_attempts: int = int(os.getenv('DB_CONNECT_RETRIES', 10)), delay: float = float(os.getenv('DB_CONNECT_DELAY', 1.5))):
+    for attempt in range(1, max_attempts + 1):
+        try:
+            with app.app_context():
+                with db.engine.connect() as conn:
+                    conn.execute(text('SELECT 1'))
+                    return True
+        except Exception as e:
+            if attempt == max_attempts:
+                raise
+            time.sleep(delay)
+
 with app.app_context():
+    wait_for_db()
     db.create_all()
     ensure_admin_exists()
 

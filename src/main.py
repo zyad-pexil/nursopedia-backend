@@ -36,9 +36,26 @@ app.register_blueprint(content_bp, url_prefix='/api/content')
 app.register_blueprint(admin_bp, url_prefix='/api/admin')
 
 # Database configuration (supports external volume via DB_PATH)
-_db_default = os.path.join(os.path.dirname(__file__), 'database', 'app.db')
-db_path = os.getenv('DB_PATH', _db_default)
+# Default to /tmp on Railway (ephemeral, but writable); use repo folder locally
+
+def _is_running_on_railway() -> bool:
+    # Railway sets these env vars automatically
+    return bool(
+        os.getenv('RAILWAY_PROJECT_ID')
+        or os.getenv('RAILWAY_ENVIRONMENT')
+        or os.getenv('RAILWAY_ENVIRONMENT_NAME')
+    )
+
+_default_db_dir = '/tmp' if _is_running_on_railway() else os.path.join(os.path.dirname(__file__), 'database')
+_db_default = os.path.join(_default_db_dir, 'app.db')
+
+# Allow override via DB_PATH if provided
+_db_path_env = os.getenv('DB_PATH')
+db_path = _db_path_env if _db_path_env else _db_default
+
+# Ensure parent directory exists
 os.makedirs(os.path.dirname(db_path), exist_ok=True)
+
 app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{db_path}"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db.init_app(app)
@@ -49,10 +66,8 @@ with app.app_context():
 # Serve uploaded receipts stored under configurable dir
 @app.route('/uploads/receipts/<path:filename>')
 def serve_receipts(filename):
-    receipts_dir = os.getenv(
-        'RECEIPTS_DIR',
-        os.path.join(os.path.dirname(__file__), 'database', 'receipts')
-    )
+    default_receipts_dir = '/tmp/receipts' if _is_running_on_railway() else os.path.join(os.path.dirname(__file__), 'database', 'receipts')
+    receipts_dir = os.getenv('RECEIPTS_DIR', default_receipts_dir)
     os.makedirs(receipts_dir, exist_ok=True)
     return send_from_directory(receipts_dir, filename)
 

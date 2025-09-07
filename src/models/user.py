@@ -3,7 +3,13 @@ from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 import json
 
+# NOTE:
+# - For SQLite, Numeric maps to DECIMAL and works fine
+# - For MySQL (PyMySQL), Enums are created as ENUM types
+# - Payment receipts will be stored in DB via a new model below
+
 db = SQLAlchemy()
+
 
 class User(db.Model):
     __tablename__ = 'users'
@@ -215,7 +221,7 @@ class SubscriptionRequest(db.Model):
     academic_year_id = db.Column(db.Integer, db.ForeignKey('academic_years.id'), nullable=False)
     selected_subjects = db.Column(db.Text, nullable=False)  # JSON string
     total_amount = db.Column(db.Numeric(10, 2), nullable=False)
-    payment_receipt_url = db.Column(db.String(500))
+    payment_receipt_url = db.Column(db.String(500))  # Legacy field kept for compatibility
     status = db.Column(db.Enum('pending', 'approved', 'rejected', name='request_status'), default='pending')
     admin_notes = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -225,6 +231,7 @@ class SubscriptionRequest(db.Model):
     # Relationships
     active_subscriptions = db.relationship('ActiveSubscription', backref='subscription_request', lazy=True)
     reviewer = db.relationship('User', foreign_keys=[reviewed_by], backref='reviewed_requests')
+    receipts = db.relationship('PaymentReceipt', backref='subscription_request', lazy=True, cascade='all, delete-orphan')
 
     def get_selected_subjects(self):
         if self.selected_subjects:
@@ -394,6 +401,28 @@ class ActivityLog(db.Model):
             'ip_address': self.ip_address,
             'user_agent': self.user_agent,
             'created_at': self.created_at.isoformat() if self.created_at else None
+        }
+
+
+class PaymentReceipt(db.Model):
+    __tablename__ = 'payment_receipts'
+
+    id = db.Column(db.Integer, primary_key=True)
+    subscription_request_id = db.Column(db.Integer, db.ForeignKey('subscription_requests.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    filename = db.Column(db.String(255), nullable=False)
+    content_type = db.Column(db.String(100), nullable=False)
+    data = db.Column(db.LargeBinary, nullable=False)  # Stored in DB (MySQL MEDIUMBLOB/LONGBLOB depending on size)
+    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_meta(self):
+        return {
+            'id': self.id,
+            'subscription_request_id': self.subscription_request_id,
+            'user_id': self.user_id,
+            'filename': self.filename,
+            'content_type': self.content_type,
+            'uploaded_at': self.uploaded_at.isoformat() if self.uploaded_at else None,
         }
 
 

@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, request, current_app
 from flask_cors import cross_origin
-from src.models.user import User, SubscriptionRequest, AcademicYear, Subject, db
+from src.models.user import User, SubscriptionRequest, AcademicYear, Subject, PaymentReceipt, db
 from datetime import datetime, timedelta
 import jwt
 import os
@@ -50,6 +50,20 @@ def verify_token(token):
         return None
     except jwt.InvalidTokenError:
         return None
+
+
+@auth_bp.route('/receipts/<int:receipt_id>', methods=['GET'])
+@cross_origin()
+def get_receipt(receipt_id: int):
+    """تحميل الإيصال من قاعدة البيانات"""
+    try:
+        receipt = PaymentReceipt.query.get_or_404(receipt_id)
+        from flask import Response
+        return Response(receipt.data, mimetype=receipt.content_type, headers={
+            'Content-Disposition': f'inline; filename="{secure_filename(receipt.filename)}"'
+        })
+    except Exception:
+        return jsonify({'success': False, 'message': 'تعذر تحميل الإيصال'}), 500
 
 @auth_bp.route('/login', methods=['POST'])
 @cross_origin()
@@ -238,7 +252,7 @@ def register():
 @auth_bp.route('/upload-receipt', methods=['POST'])
 @cross_origin()
 def upload_receipt():
-    """رفع إيصال الدفع"""
+    """رفع إيصال الدفع إلى قاعدة البيانات"""
     try:
         if 'receipt' not in request.files:
             return jsonify({
@@ -315,13 +329,18 @@ def upload_receipt():
         
         if not drive_file_url:
             filename = secure_filename(f"{user_id}_{uuid.uuid4().hex}_{file.filename}")
-            # Save receipts alongside the database for single-volume setup
-            upload_folder = os.path.join(current_app.root_path, 'database', 'receipts')
-            os.makedirs(upload_folder, exist_ok=True)
-            file_path = os.path.join(upload_folder, filename)
-            file.save(file_path)
-            # Public URL is now served via /uploads/receipts/<filename>
-            drive_file_url = f"/uploads/receipts/{filename}"
+            # Store in DB (MySQL recommended). Size limited by MAX_CONTENT_LENGTH.
+            receipt = PaymentReceipt(
+                subscription_request_id=None,  # link later if needed
+                user_id=int(user_id),
+                filename=filename,
+                content_type=file.mimetype or 'application/octet-stream',
+                data=file.read()
+            )
+            db.session.add(receipt)
+            db.session.flush()  # get receipt.id
+            # Provide a URL to fetch from DB
+            drive_file_url = f"/api/auth/receipts/{receipt.id}"
         
         # تحديث طلب الاشتراك
         subscription_request = SubscriptionRequest.query.filter_by(
@@ -330,7 +349,13 @@ def upload_receipt():
         ).first()
         
         if subscription_request:
-            subscription_request.payment_receipt_url = drive_file_url
+            subscription_request.payment_receipt_url = drive_file_url  # keep legacy link
+            # If we just created a DB receipt, link it
+            try:
+                if 'receipt' in locals() and receipt and not receipt.subscription_request_id:
+                    receipt.subscription_request_id = subscription_request.id
+            except Exception:
+                pass
             db.session.commit()
         
         return jsonify({

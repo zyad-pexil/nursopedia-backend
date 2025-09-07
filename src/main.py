@@ -35,33 +35,70 @@ app.register_blueprint(auth_bp, url_prefix='/api/auth')
 app.register_blueprint(content_bp, url_prefix='/api/content')
 app.register_blueprint(admin_bp, url_prefix='/api/admin')
 
-# Database configuration (supports external volume via DB_PATH)
-# Default to /tmp on Railway (ephemeral, but writable); use repo folder locally
+# Database configuration updated to support Railway MySQL or local SQLite
 
 def _is_running_on_railway() -> bool:
-    # Railway sets these env vars automatically
     return bool(
         os.getenv('RAILWAY_PROJECT_ID')
         or os.getenv('RAILWAY_ENVIRONMENT')
         or os.getenv('RAILWAY_ENVIRONMENT_NAME')
     )
 
-_default_db_dir = '/tmp' if _is_running_on_railway() else os.path.join(os.path.dirname(__file__), 'database')
-_db_default = os.path.join(_default_db_dir, 'app.db')
+# Build SQLALCHEMY_DATABASE_URI from envs when available (Railway MySQL)
+MYSQL_HOST = os.getenv('MYSQLHOST') or os.getenv('DB_HOST')
+MYSQL_PORT = os.getenv('MYSQLPORT') or os.getenv('DB_PORT', '3306')
+MYSQL_USER = os.getenv('MYSQLUSER') or os.getenv('DB_USER')
+MYSQL_PASSWORD = os.getenv('MYSQLPASSWORD') or os.getenv('DB_PASSWORD')
+MYSQL_DATABASE = os.getenv('MYSQLDATABASE') or os.getenv('DB_NAME')
 
-# Allow override via DB_PATH if provided
-_db_path_env = os.getenv('DB_PATH')
-db_path = _db_path_env if _db_path_env else _db_default
+if MYSQL_HOST and MYSQL_USER and MYSQL_PASSWORD and MYSQL_DATABASE:
+    # e.g., mysql+pymysql://user:pass@host:3306/dbname
+    db_uri = f"mysql+pymysql://{MYSQL_USER}:{MYSQL_PASSWORD}@{MYSQL_HOST}:{MYSQL_PORT}/{MYSQL_DATABASE}?charset=utf8mb4"
+else:
+    # Fallback to SQLite (local dev or when MySQL not configured)
+    _default_db_dir = '/tmp' if _is_running_on_railway() else os.path.join(os.path.dirname(__file__), 'database')
+    _db_default = os.path.join(_default_db_dir, 'app.db')
+    _db_path_env = os.getenv('DB_PATH')
+    db_path = _db_path_env if _db_path_env else _db_default
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    db_uri = f"sqlite:///{db_path}"
 
-# Ensure parent directory exists
-os.makedirs(os.path.dirname(db_path), exist_ok=True)
-
-app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{db_path}"
+app.config['SQLALCHEMY_DATABASE_URI'] = db_uri
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# Configure max content length if needed (e.g., 10MB receipts)
+app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_CONTENT_LENGTH', 10 * 1024 * 1024))
+
 db.init_app(app)
 migrate = Migrate(app, db)
+
+# Ensure at least one admin user exists on every startup
+from src.models.user import User
+
+def ensure_admin_exists():
+    admin_username = os.getenv('DEFAULT_ADMIN_USERNAME', 'admin')
+    admin_email = os.getenv('DEFAULT_ADMIN_EMAIL', 'admin@example.com')
+    admin_password = os.getenv('DEFAULT_ADMIN_PASSWORD', 'Admin1234')
+    admin_phone = os.getenv('DEFAULT_ADMIN_PHONE', '01000000000')
+    admin_fullname = os.getenv('DEFAULT_ADMIN_FULLNAME', 'Administrator')
+
+    admin = User.query.filter_by(user_type='admin').first()
+    if not admin:
+        admin = User(
+            username=admin_username,
+            email=admin_email,
+            full_name=admin_fullname,
+            phone_number=admin_phone,
+            user_type='admin',
+            is_active=True,
+        )
+        admin.set_password(admin_password)
+        db.session.add(admin)
+        db.session.commit()
+
 with app.app_context():
     db.create_all()
+    ensure_admin_exists()
 
 # Serve uploaded receipts stored under configurable dir
 @app.route('/uploads/receipts/<path:filename>')

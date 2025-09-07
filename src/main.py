@@ -46,23 +46,34 @@ def _is_running_on_railway() -> bool:
     )
 
 # Build SQLALCHEMY_DATABASE_URI from envs when available (Railway MySQL)
-MYSQL_HOST = os.getenv('MYSQLHOST') or os.getenv('DB_HOST')
-MYSQL_PORT = os.getenv('MYSQLPORT') or os.getenv('DB_PORT', '3306')
-MYSQL_USER = os.getenv('MYSQLUSER') or os.getenv('DB_USER')
-MYSQL_PASSWORD = os.getenv('MYSQLPASSWORD') or os.getenv('DB_PASSWORD')
-MYSQL_DATABASE = os.getenv('MYSQLDATABASE') or os.getenv('DB_NAME')
+# Priority 1: full URL from MYSQL_PUBLIC_URL
+DB_URL_ENV = os.getenv('MYSQL_PUBLIC_URL') or os.getenv('DATABASE_URL')
 
-if MYSQL_HOST and MYSQL_USER and MYSQL_PASSWORD and MYSQL_DATABASE:
-    # e.g., mysql+pymysql://user:pass@host:3306/dbname
-    db_uri = f"mysql+pymysql://{MYSQL_USER}:{MYSQL_PASSWORD}@{MYSQL_HOST}:{MYSQL_PORT}/{MYSQL_DATABASE}?charset=utf8mb4"
+def _normalize_mysql_url(url: str) -> str:
+    if url.startswith('mysql://') and 'mysql+pymysql://' not in url:
+        return url.replace('mysql://', 'mysql+pymysql://', 1)
+    return url
+
+if DB_URL_ENV:
+    db_uri = _normalize_mysql_url(DB_URL_ENV)
 else:
-    # Fallback to SQLite (local dev or when MySQL not configured)
-    _default_db_dir = '/tmp' if _is_running_on_railway() else os.path.join(os.path.dirname(__file__), 'database')
-    _db_default = os.path.join(_default_db_dir, 'app.db')
-    _db_path_env = os.getenv('DB_PATH')
-    db_path = _db_path_env if _db_path_env else _db_default
-    os.makedirs(os.path.dirname(db_path), exist_ok=True)
-    db_uri = f"sqlite:///{db_path}"
+    MYSQL_HOST = os.getenv('MYSQLHOST') or os.getenv('DB_HOST')
+    MYSQL_PORT = os.getenv('MYSQLPORT') or os.getenv('DB_PORT', '3306')
+    MYSQL_USER = os.getenv('MYSQLUSER') or os.getenv('DB_USER')
+    MYSQL_PASSWORD = os.getenv('MYSQLPASSWORD') or os.getenv('DB_PASSWORD')
+    MYSQL_DATABASE = os.getenv('MYSQLDATABASE') or os.getenv('DB_NAME')
+
+    if MYSQL_HOST and MYSQL_USER and MYSQL_PASSWORD and MYSQL_DATABASE:
+        # e.g., mysql+pymysql://user:pass@host:3306/dbname
+        db_uri = f"mysql+pymysql://{MYSQL_USER}:{MYSQL_PASSWORD}@{MYSQL_HOST}:{MYSQL_PORT}/{MYSQL_DATABASE}?charset=utf8mb4"
+    else:
+        # Fallback to SQLite (local dev or when MySQL not configured)
+        _default_db_dir = '/tmp' if _is_running_on_railway() else os.path.join(os.path.dirname(__file__), 'database')
+        _db_default = os.path.join(_default_db_dir, 'app.db')
+        _db_path_env = os.getenv('DB_PATH')
+        db_path = _db_path_env if _db_path_env else _db_default
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        db_uri = f"sqlite:///{db_path}"
 
 app.config['SQLALCHEMY_DATABASE_URI'] = db_uri
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False

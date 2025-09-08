@@ -426,6 +426,36 @@ class PaymentReceipt(db.Model):
         }
 
 
+class AdditionalSubjectRequest(db.Model):
+    __tablename__ = 'additional_subject_requests'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    subject_id = db.Column(db.Integer, db.ForeignKey('subjects.id'), nullable=False)
+    receipt_url = db.Column(db.String(500), nullable=False)
+    status = db.Column(db.Enum('pending', 'approved', 'rejected', name='add_request_status'), default='pending')
+    admin_notes = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    reviewed_at = db.Column(db.DateTime)
+    reviewed_by = db.Column(db.Integer, db.ForeignKey('users.id'))
+
+    subject = db.relationship('Subject', foreign_keys=[subject_id])
+    reviewer = db.relationship('User', foreign_keys=[reviewed_by])
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'subject_id': self.subject_id,
+            'receipt_url': self.receipt_url,
+            'status': self.status,
+            'admin_notes': self.admin_notes,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'reviewed_at': self.reviewed_at.isoformat() if self.reviewed_at else None,
+            'reviewed_by': self.reviewed_by,
+        }
+
+
 class Question(db.Model):
     __tablename__ = 'questions'
     

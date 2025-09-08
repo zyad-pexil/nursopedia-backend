@@ -2,7 +2,7 @@ from flask import Blueprint, jsonify, request, current_app
 from flask_cors import cross_origin
 from datetime import datetime
 import jwt
-from src.models.user import User, db, ActiveSubscription, Subject, ExamAttempt, LessonProgress, Notification
+from src.models.user import User, db, ActiveSubscription, Subject, ExamAttempt, LessonProgress, Notification, AdditionalSubjectRequest
 
 user_bp = Blueprint('user', __name__)
 
@@ -174,6 +174,118 @@ def unread_notifications_count():
     user = request.current_user
     count = Notification.query.filter_by(user_id=user.id, is_read=False).count()
     return jsonify({'success': True, 'count': count})
+
+
+@user_bp.route('/me/available-subjects', methods=['GET'])
+@cross_origin()
+@require_auth
+def available_subjects():
+    """Subjects in the same academic year that the user is NOT subscribed to"""
+    user = request.current_user
+    # user’s academic year is inferred from any current subject; fallback: all active subjects
+    active_subs = ActiveSubscription.query.filter_by(user_id=user.id, is_active=True).all()
+    current_subject_ids = [s.subject_id for s in active_subs]
+    # If user has any active subject, use its academic_year_id as filter
+    academic_year_id = None
+    if current_subject_ids:
+        first_subject = Subject.query.get(current_subject_ids[0])
+        academic_year_id = first_subject.academic_year_id if first_subject else None
+    query = Subject.query.filter_by(is_active=True)
+    if academic_year_id:
+        query = query.filter(Subject.academic_year_id == academic_year_id)
+    if current_subject_ids:
+        query = query.filter(~Subject.id.in_(current_subject_ids))
+    subjects = query.all()
+    return jsonify({'success': True, 'subjects': [s.to_dict() for s in subjects]})
+
+
+@user_bp.route('/me/add-subject-request', methods=['POST'])
+@cross_origin()
+@require_auth
+def create_add_subject_request():
+    """Create an add-subject request with Cloudinary receipt upload"""
+    user = request.current_user
+    # multipart/form-data: subject_id, receipt(file)
+    if 'subject_id' not in request.form:
+        return jsonify({'success': False, 'message': 'subject_id مطلوب'}), 400
+    subject_id = request.form.get('subject_id')
+    try:
+        subject_id = int(subject_id)
+    except Exception:
+        return jsonify({'success': False, 'message': 'subject_id غير صالح'}), 400
+
+    # Subject must be in same academic year and not already subscribed
+    subject = Subject.query.get(subject_id)
+    if not subject or not subject.is_active:
+        return jsonify({'success': False, 'message': 'المادة غير موجودة أو غير مفعلة'}), 404
+    # infer academic year from current subscriptions
+    active_subs = ActiveSubscription.query.filter_by(user_id=user.id, is_active=True).all()
+    current_subject_ids = [s.subject_id for s in active_subs]
+    if current_subject_ids:
+        first_subject = Subject.query.get(current_subject_ids[0])
+        if first_subject and subject.academic_year_id != first_subject.academic_year_id:
+            return jsonify({'success': False, 'message': 'يمكن إضافة مواد من نفس السنة الدراسية فقط'}), 400
+    if subject.id in current_subject_ids:
+        return jsonify({'success': False, 'message': 'أنت مشترك بالفعل في هذه المادة'}), 400
+
+    # receipt file required
+    if 'receipt' not in request.files:
+        return jsonify({'success': False, 'message': 'إيصال الدفع مطلوب'}), 400
+    file = request.files['receipt']
+    if file.filename == '':
+        return jsonify({'success': False, 'message': 'لم يتم اختيار ملف'}), 400
+    allowed_extensions = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
+    if not ('.' in file.filename and file.filename.rsplit('.', 1)[1].lower() in allowed_extensions):
+        return jsonify({'success': False, 'message': 'نوع الملف غير مدعوم'}), 400
+
+    # Upload to Cloudinary
+    receipt_url = None
+    try:
+        import cloudinary
+        import cloudinary.uploader
+        cloudinary.config(
+            cloud_name=os.getenv('CLOUDINARY_CLOUD_NAME'),
+            api_key=os.getenv('CLOUDINARY_API_KEY'),
+            api_secret=os.getenv('CLOUDINARY_API_SECRET')
+        )
+        if os.getenv('CLOUDINARY_CLOUD_NAME') and os.getenv('CLOUDINARY_API_KEY') and os.getenv('CLOUDINARY_API_SECRET'):
+            upload_result = cloudinary.uploader.upload(
+                file.stream,
+                resource_type='auto',
+                folder=os.getenv('CLOUDINARY_FOLDER', 'receipts'),
+                public_id=f"addsub_{user.id}_{subject_id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
+                overwrite=True
+            )
+            receipt_url = upload_result.get('secure_url') or upload_result.get('url')
+    except Exception:
+        receipt_url = None
+
+    if not receipt_url:
+        return jsonify({'success': False, 'message': 'فشل رفع الإيصال إلى Cloudinary'}), 500
+
+    # Create pending request
+    req = AdditionalSubjectRequest(
+        user_id=user.id,
+        subject_id=subject.id,
+        receipt_url=receipt_url,
+        status='pending'
+    )
+    db.session.add(req)
+
+    # Optional: notify admin via simple notification row
+    try:
+        from src.models.user import Notification
+        note = Notification(
+            user_id=user.id,  # can be  admin id if you have one; keeping per-user record
+            title='طلب إضافة مادة',
+            description=f"طلب إضافة مادة: {subject.name}",
+        )
+        db.session.add(note)
+    except Exception:
+        pass
+
+    db.session.commit()
+    return jsonify({'success': True, 'message': 'تم إرسال طلب إضافة المادة بنجاح', 'request': req.to_dict()}), 201
 
 @user_bp.route('/users', methods=['POST'])
 def create_user():

@@ -3,7 +3,8 @@ from flask_cors import cross_origin
 from src.models.user import (
     db, User, Subject, Lesson, Exam, Question, Answer, 
     SubscriptionRequest, ActiveSubscription, AcademicYear,
-    LessonProgress, ExamAttempt, ExamAnswer, ExamQuestion, Notification
+    LessonProgress, ExamAttempt, ExamAnswer, ExamQuestion, Notification,
+    AdditionalSubjectRequest
 )
 from datetime import datetime
 import jwt
@@ -207,6 +208,94 @@ def toggle_student_status(student_id):
             'success': False,
             'message': 'حدث خطأ في الخادم'
         }), 500
+
+# Additional Subject Requests Management
+@admin_bp.route('/additional-subject-requests', methods=['GET'])
+@cross_origin()
+@require_admin
+def list_additional_subject_requests():
+    status = request.args.get('status', 'pending')
+    query = AdditionalSubjectRequest.query
+    if status != 'all':
+        query = query.filter_by(status=status)
+    rows = query.order_by(AdditionalSubjectRequest.created_at.desc()).all()
+    out = []
+    for r in rows:
+        d = r.to_dict()
+        d['user_name'] = r.reviewer.full_name if r.reviewer else None
+        subj = Subject.query.get(r.subject_id)
+        d['subject'] = {'id': subj.id, 'name': subj.name} if subj else None
+        student = User.query.get(r.user_id)
+        d['student'] = {'id': student.id, 'name': student.full_name, 'username': student.username} if student else None
+        out.append(d)
+    return jsonify({'success': True, 'requests': out})
+
+@admin_bp.route('/additional-subject-requests/<int:req_id>/approve', methods=['POST'])
+@cross_origin()
+@require_admin
+def approve_additional_subject_request(req_id):
+    admin = request.current_user
+    req = AdditionalSubjectRequest.query.get_or_404(req_id)
+    if req.status != 'pending':
+        return jsonify({'success': False, 'message': 'تمت مراجعة الطلب مسبقاً'}), 400
+
+    # Create ActiveSubscription if not exists
+    existing = ActiveSubscription.query.filter_by(user_id=req.user_id, subject_id=req.subject_id).first()
+    if not existing:
+        active = ActiveSubscription(
+            user_id=req.user_id,
+            subject_id=req.subject_id,
+            subscription_request_id=None,
+            is_active=True
+        )
+        db.session.add(active)
+
+    req.status = 'approved'
+    req.reviewed_at = datetime.utcnow()
+    req.reviewed_by = admin.id
+
+    # Notify student
+    try:
+        note = Notification(
+            user_id=req.user_id,
+            title='تم قبول طلب إضافة مادة',
+            description='تمت الموافقة على طلبك لإضافة المادة.'
+        )
+        db.session.add(note)
+    except Exception:
+        pass
+
+    db.session.commit()
+    return jsonify({'success': True, 'message': 'تم قبول الطلب وإضافة المادة'}), 200
+
+@admin_bp.route('/additional-subject-requests/<int:req_id>/reject', methods=['POST'])
+@cross_origin()
+@require_admin
+def reject_additional_subject_request(req_id):
+    admin = request.current_user
+    req = AdditionalSubjectRequest.query.get_or_404(req_id)
+    if req.status != 'pending':
+        return jsonify({'success': False, 'message': 'تمت مراجعة الطلب مسبقاً'}), 400
+
+    data = request.get_json(silent=True) or {}
+    req.status = 'rejected'
+    req.reviewed_at = datetime.utcnow()
+    req.reviewed_by = admin.id
+    req.admin_notes = data.get('notes', '')
+
+    # Notify student
+    try:
+        note = Notification(
+            user_id=req.user_id,
+            title='تم رفض طلب إضافة مادة',
+            description=req.admin_notes or 'نأسف، تم رفض الطلب.'
+        )
+        db.session.add(note)
+    except Exception:
+        pass
+
+    db.session.commit()
+    return jsonify({'success': True, 'message': 'تم رفض الطلب'}), 200
 
 # Subscription Request Management
 @admin_bp.route('/subscription-requests', methods=['GET'])

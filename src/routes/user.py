@@ -2,6 +2,7 @@ from flask import Blueprint, jsonify, request, current_app
 from flask_cors import cross_origin
 from datetime import datetime
 import jwt
+import os
 from src.models.user import User, db, ActiveSubscription, Subject, ExamAttempt, LessonProgress, Notification, AdditionalSubjectRequest
 
 user_bp = Blueprint('user', __name__)

@@ -283,55 +283,33 @@ def upload_receipt():
                 'message': 'نوع الملف غير مدعوم'
             }), 400
         
-        # رفع إلى Google Drive إن تم ضبط المفاتيح، وإلا حفظ محلي (معطّل الآن، سيتم الحفظ محليًا دائمًا)
+        # رفع إلى Cloudinary إذا تم ضبط المتغيرات
         drive_file_url = None
-        if False and os.getenv('GDRIVE_ENABLED') == '1' and os.getenv('GDRIVE_FOLDER_ID') and os.getenv('GDRIVE_SERVICE_ACCOUNT_JSON'):
-            try:
-                from google.oauth2 import service_account
-                from googleapiclient.discovery import build
-                from googleapiclient.http import MediaIoBaseUpload
-                import io, json
-
-                creds_env = os.getenv('GDRIVE_SERVICE_ACCOUNT_JSON')
-                creds_file = os.getenv('GDRIVE_SERVICE_ACCOUNT_FILE')
-                creds_info = None
-                if creds_file and os.path.exists(creds_file):
-                    with open(creds_file, 'r', encoding='utf-8') as cf:
-                        creds_info = json.load(cf)
-                elif creds_env:
-                    creds_info = json.loads(creds_env)
-                    # Normalize private key newlines if needed
-                    if isinstance(creds_info, dict) and 'private_key' in creds_info:
-                        creds_info['private_key'] = creds_info['private_key'].replace('\\n', '\n')
-                else:
-                    raise RuntimeError('No Google service account credentials provided')
-
-                creds = service_account.Credentials.from_service_account_info(
-                    creds_info,
-                    scopes=['https://www.googleapis.com/auth/drive.file']
+        try:
+            import cloudinary
+            import cloudinary.uploader
+            cloudinary.config(
+                cloud_name=os.getenv('CLOUDINARY_CLOUD_NAME'),
+                api_key=os.getenv('CLOUDINARY_API_KEY'),
+                api_secret=os.getenv('CLOUDINARY_API_SECRET')
+            )
+            if os.getenv('CLOUDINARY_CLOUD_NAME') and os.getenv('CLOUDINARY_API_KEY') and os.getenv('CLOUDINARY_API_SECRET'):
+                upload_result = cloudinary.uploader.upload(
+                    file.stream,
+                    resource_type='auto',
+                    folder=os.getenv('CLOUDINARY_FOLDER', 'receipts'),
+                    public_id=f"{user_id}_{uuid.uuid4().hex}",
+                    overwrite=True
                 )
-                service = build('drive', 'v3', credentials=creds)
-
-                media = MediaIoBaseUpload(file.stream, mimetype=file.mimetype, resumable=False)
-                file_metadata = {
-                    'name': secure_filename(f"{user_id}_{uuid.uuid4().hex}_{file.filename}"),
-                    'parents': [os.getenv('GDRIVE_FOLDER_ID')]
-                }
-                created = service.files().create(
-                    body=file_metadata,
-                    media_body=media,
-                    fields='id, webViewLink, webContentLink',
-                    supportsAllDrives=True
-                ).execute()
-                drive_file_url = created.get('webViewLink') or created.get('webContentLink')
-            except Exception:
-                drive_file_url = None
+                drive_file_url = upload_result.get('secure_url') or upload_result.get('url')
+        except Exception:
+            drive_file_url = None
         
+        # في حال فشل Cloudinary، خزّن الملف في قاعدة البيانات كحل احتياطي
         if not drive_file_url:
             filename = secure_filename(f"{user_id}_{uuid.uuid4().hex}_{file.filename}")
-            # Store in DB (MySQL recommended). Size limited by MAX_CONTENT_LENGTH.
             receipt = PaymentReceipt(
-                subscription_request_id=None,  # link later if needed
+                subscription_request_id=None,
                 user_id=int(user_id),
                 filename=filename,
                 content_type=file.mimetype or 'application/octet-stream',
@@ -339,18 +317,16 @@ def upload_receipt():
             )
             db.session.add(receipt)
             db.session.flush()  # get receipt.id
-            # Provide a URL to fetch from DB
             drive_file_url = f"/api/auth/receipts/{receipt.id}"
         
-        # تحديث طلب الاشتراك
+        # تحديث طلب الاشتراك بالرابط (Cloudinary أو قاعدة البيانات)
         subscription_request = SubscriptionRequest.query.filter_by(
             user_id=user_id, 
             status='pending'
         ).first()
         
         if subscription_request:
-            subscription_request.payment_receipt_url = drive_file_url  # keep legacy link
-            # If we just created a DB receipt, link it
+            subscription_request.payment_receipt_url = drive_file_url
             try:
                 if 'receipt' in locals() and receipt and not receipt.subscription_request_id:
                     receipt.subscription_request_id = subscription_request.id

@@ -18,3 +18,4 @@ python-dotenv==1.0.1
 gunicorn==21.2.0
 PyJWT==2.9.0
 PyMySQL==1.1.1
+cloudinary==1.41.0

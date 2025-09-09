@@ -225,7 +225,7 @@ def list_additional_subject_requests():
         d = r.to_dict()
         d['user_name'] = r.reviewer.full_name if r.reviewer else None
         subj = Subject.query.get(r.subject_id)
-        d['subject'] = {'id': subj.id, 'name': subj.name} if subj else None
+        d['subject'] = {'id': subj.id, 'name': subj.name, 'price': float(subj.price)} if subj else None
         student = User.query.get(r.user_id)
         d['student'] = {'id': student.id, 'name': student.full_name, 'username': student.username} if student else None
         out.append(d)

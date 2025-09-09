@@ -262,7 +262,7 @@ class ActiveSubscription(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     subject_id = db.Column(db.Integer, db.ForeignKey('subjects.id'), nullable=False)
-    subscription_request_id = db.Column(db.Integer, db.ForeignKey('subscription_requests.id'), nullable=False)
+    subscription_request_id = db.Column(db.Integer, db.ForeignKey('subscription_requests.id'), nullable=True)
     start_date = db.Column(db.DateTime, default=datetime.utcnow)
     end_date = db.Column(db.DateTime)  # Can be NULL for lifetime subscriptions
     is_active = db.Column(db.Boolean, default=True)

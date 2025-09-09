@@ -9,6 +9,7 @@ from src.models.user import (
 from datetime import datetime
 import jwt
 import os
+import json
 from werkzeug.utils import secure_filename
 
 admin_bp = Blueprint('admin', __name__)
@@ -242,10 +243,24 @@ def approve_additional_subject_request(req_id):
     # Create ActiveSubscription if not exists
     existing = ActiveSubscription.query.filter_by(user_id=req.user_id, subject_id=req.subject_id).first()
     if not existing:
+        # Create a light SubscriptionRequest record to maintain FK integrity
+        sr = SubscriptionRequest(
+            user_id=req.user_id,
+            academic_year_id=Subject.query.get(req.subject_id).academic_year_id if Subject.query.get(req.subject_id) else None,
+            selected_subjects=json.dumps([req.subject_id]),
+            total_amount=0,
+            status='approved',
+            created_at=datetime.utcnow(),
+            reviewed_at=datetime.utcnow(),
+            reviewed_by=admin.id,
+        )
+        db.session.add(sr)
+        db.session.flush()  # get sr.id
+
         active = ActiveSubscription(
             user_id=req.user_id,
             subject_id=req.subject_id,
-            subscription_request_id=None,
+            subscription_request_id=sr.id,
             is_active=True
         )
         db.session.add(active)

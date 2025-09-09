@@ -34,11 +34,13 @@ def _verify_captcha(token: str):
 auth_bp = Blueprint('auth', __name__)
 
 # Helper function to generate JWT token
-def generate_token(user_id):
+def generate_token(user_id, session_id=None):
     payload = {
         'user_id': user_id,
         'exp': datetime.utcnow() + timedelta(days=7)  # Token expires in 7 days
     }
+    if session_id:
+        payload['sid'] = session_id
     return jwt.encode(payload, current_app.config['SECRET_KEY'], algorithm='HS256')
 
 # Helper function to verify JWT token
@@ -97,12 +99,14 @@ def login():
                 'message': 'حسابك غير مفعل. يرجى انتظار موافقة الإدارة'
             }), 401
         
-        # تحديث آخر تسجيل دخول
+        # تحديث آخر تسجيل دخول وإنشاء جلسة جديدة تلغي الجلسة السابقة
         user.last_login = datetime.utcnow()
+        new_session_id = uuid.uuid4().hex  # 32 chars
+        user.current_session_id = new_session_id
         db.session.commit()
         
-        # إنشاء رمز المصادقة
-        token = generate_token(user.id)
+        # إنشاء رمز المصادقة مرتبط بالجلسة
+        token = generate_token(user.id, session_id=new_session_id)
         
         return jsonify({
             'success': True,

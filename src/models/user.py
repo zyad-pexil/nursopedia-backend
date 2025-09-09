@@ -27,6 +27,9 @@ class User(db.Model):
     last_login = db.Column(db.DateTime)
     password_reset_token = db.Column(db.String(255))
     password_reset_expires = db.Column(db.DateTime)
+
+    # Single active session support
+    current_session_id = db.Column(db.String(64))  # nullable; set on login
     
     # Relationships
     subscription_requests = db.relationship('SubscriptionRequest', foreign_keys='SubscriptionRequest.user_id', backref='user', lazy=True)

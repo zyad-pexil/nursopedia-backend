@@ -12,7 +12,7 @@ user_bp = Blueprint('user', __name__)
 def verify_token(token):
     try:
         payload = jwt.decode(token, current_app.config['SECRET_KEY'], algorithms=['HS256'])
-        return payload['user_id']
+        return payload  # return full payload to check session id
     except jwt.ExpiredSignatureError:
         return None
     except jwt.InvalidTokenError:
@@ -27,12 +27,16 @@ def require_auth(f):
             return jsonify({'success': False, 'message': 'رمز المصادقة مطلوب'}), 401
         if token.startswith('Bearer '):
             token = token[7:]
-        user_id = verify_token(token)
-        if not user_id:
+        payload = verify_token(token)
+        if not payload:
             return jsonify({'success': False, 'message': 'رمز المصادقة غير صالح'}), 401
-        user = User.query.get(user_id)
+        user = User.query.get(payload.get('user_id'))
         if not user or not user.is_active:
             return jsonify({'success': False, 'message': 'المستخدم غير موجود أو غير مفعل'}), 401
+        # Enforce single active session: sid in token must match user's current_session_id
+        token_sid = payload.get('sid')
+        if user.current_session_id and token_sid != user.current_session_id:
+            return jsonify({'success': False, 'message': 'تم تسجيل دخولك من جهاز آخر. الرجاء تسجيل الدخول مجدداً.'}), 401
         request.current_user = user
         return f(*args, **kwargs)
     decorated.__name__ = f.__name__

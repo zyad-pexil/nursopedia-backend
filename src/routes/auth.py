@@ -54,6 +54,36 @@ def verify_token(token):
         return None
 
 
+@auth_bp.route('/logout', methods=['POST'])
+@cross_origin()
+def logout():
+    """تسجيل الخروج: يُفرغ current_session_id ليُسمح بتسجيل الدخول من جهاز آخر"""
+    try:
+        token = request.headers.get('Authorization')
+        if not token:
+            return jsonify({'success': False, 'message': 'رمز المصادقة مطلوب'}), 401
+        if token.startswith('Bearer '):
+            token = token[7:]
+        # Decode token to get user and sid
+        try:
+            payload = jwt.decode(token, current_app.config['SECRET_KEY'], algorithms=['HS256'])
+        except jwt.ExpiredSignatureError:
+            return jsonify({'success': False, 'message': 'انتهت صلاحية الجلسة'}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({'success': False, 'message': 'رمز المصادقة غير صالح'}), 401
+        user = User.query.get(payload.get('user_id'))
+        if not user:
+            return jsonify({'success': False, 'message': 'المستخدم غير موجود'}), 401
+        token_sid = payload.get('sid')
+        # لا تسمح بتسجيل الخروج باستخدام توكن من جهاز آخر
+        if user.current_session_id and token_sid != user.current_session_id:
+            return jsonify({'success': False, 'message': 'لا يمكن تسجيل الخروج من هذه الجلسة'}), 401
+        user.current_session_id = None
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'تم تسجيل الخروج بنجاح'}), 200
+    except Exception:
+        return jsonify({'success': False, 'message': 'حدث خطأ في الخادم'}), 500
+
 @auth_bp.route('/receipts/<int:receipt_id>', methods=['GET'])
 @cross_origin()
 def get_receipt(receipt_id: int):
@@ -99,7 +129,14 @@ def login():
                 'message': 'حسابك غير مفعل. يرجى انتظار موافقة الإدارة'
             }), 401
         
-        # تحديث آخر تسجيل دخول وإنشاء جلسة جديدة تلغي الجلسة السابقة
+        # منع تسجيل الدخول من جهاز ثانٍ إن كانت هناك جلسة فعّالة حديثة
+        if user.current_session_id:
+            if user.last_login and datetime.utcnow() - user.last_login < timedelta(days=7):
+                return jsonify({
+                    'success': False,
+                    'message': 'هذا الحساب مسجل دخول على جهاز آخر. الرجاء تسجيل الخروج أولاً من الجهاز الآخر.'
+                }), 409
+        # إنشاء جلسة جديدة (أو استبدال القديمة إن كانت منتهية)
         user.last_login = datetime.utcnow()
         new_session_id = uuid.uuid4().hex  # 32 chars
         user.current_session_id = new_session_id

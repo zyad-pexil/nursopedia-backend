@@ -471,6 +471,41 @@ def reset_password():
             'message': 'حدث خطأ في الخادم'
         }), 500
 
+@auth_bp.route('/reverify', methods=['POST'])
+@cross_origin()
+def reverify_password():
+    """إعادة التحقق من كلمة المرور قبل فتح مادة/درس بدون تطبيق منع تعدد الأجهزة
+    - يتطلب Authorization Bearer token للتعرف على المستخدم
+    - يتحقق فقط من كلمة المرور ولا يعدل current_session_id ولا last_login
+    """
+    try:
+        token = request.headers.get('Authorization')
+        if not token:
+            return jsonify({'success': False, 'message': 'رمز المصادقة مطلوب'}), 401
+        if token.startswith('Bearer '):
+            token = token[7:]
+        # فك التوكن بدون فرض مطابقة sid مع current_session_id
+        try:
+            payload = jwt.decode(token, current_app.config['SECRET_KEY'], algorithms=['HS256'])
+        except jwt.ExpiredSignatureError:
+            return jsonify({'success': False, 'message': 'انتهت صلاحية الجلسة'}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({'success': False, 'message': 'رمز المصادقة غير صالح'}), 401
+        user = User.query.get(payload.get('user_id'))
+        if not user or not user.is_active:
+            return jsonify({'success': False, 'message': 'المستخدم غير موجود أو غير مفعل'}), 401
+
+        data = request.get_json() or {}
+        password = data.get('password')
+        if not password:
+            return jsonify({'success': False, 'message': 'كلمة المرور مطلوبة'}), 400
+        if not user.check_password(password):
+            return jsonify({'success': False, 'message': 'كلمة المرور غير صحيحة'}), 401
+        # نجاح بدون أي تعديل على الجلسة
+        return jsonify({'success': True, 'message': 'تم التحقق بنجاح'}), 200
+    except Exception:
+        return jsonify({'success': False, 'message': 'حدث خطأ في الخادم'}), 500
+
 @auth_bp.route('/verify-token', methods=['POST'])
 @cross_origin()
 def verify_user_token():

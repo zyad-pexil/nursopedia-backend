@@ -235,7 +235,6 @@ class SubscriptionRequest(db.Model):
     reviewed_by = db.Column(db.Integer, db.ForeignKey('users.id'))
     
     # Relationships
-    user = db.relationship('User', foreign_keys=[user_id], backref='subscription_requests')
     active_subscriptions = db.relationship('ActiveSubscription', backref='subscription_request', lazy=True)
     reviewer = db.relationship('User', foreign_keys=[reviewed_by], backref='reviewed_requests')
     receipts = db.relationship('PaymentReceipt', backref='subscription_request', lazy=True, cascade='all, delete-orphan')

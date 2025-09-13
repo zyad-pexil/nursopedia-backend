@@ -76,6 +76,16 @@ def get_dashboard_stats():
         total_lessons = Lesson.query.filter_by(is_active=True).count()
         total_exams = Exam.query.filter_by(is_active=True).count()
         
+        # Debug: log counts
+        try:
+            current_app.logger.info(
+                f"Admin stats counts: total_students={total_students}, active_students={active_students}, "
+                f"pending_requests={pending_requests}, total_subjects={total_subjects}, total_lessons={total_lessons}, "
+                f"total_exams={total_exams}"
+            )
+        except Exception:
+            pass
+        
         # Revenue calculation (approved subscriptions)
         approved_requests = SubscriptionRequest.query.filter_by(status='approved').all()
         # Safely sum amounts and avoid None/Decimal issues
@@ -87,11 +97,24 @@ def get_dashboard_stats():
         ).limit(5).all()
         
         recent_requests = (
-            SubscriptionRequest.query.options(joinedload(SubscriptionRequest.reviewer), joinedload(SubscriptionRequest.active_subscriptions))
+            SubscriptionRequest.query.options(
+                joinedload(SubscriptionRequest.reviewer),
+                joinedload(SubscriptionRequest.active_subscriptions),
+                joinedload(SubscriptionRequest.academic_year),
+                joinedload(SubscriptionRequest.user),
+            )
             .order_by(SubscriptionRequest.created_at.desc())
             .limit(5)
             .all()
         )
+        
+        # Debug: log sizes
+        try:
+            current_app.logger.info(
+                f"Admin stats derived: approved_requests={len(approved_requests)}, recent_regs={len(recent_registrations)}, recent_reqs={len(recent_requests)}"
+            )
+        except Exception:
+            pass
         
         from flask import current_app
         zero = getattr(current_app.config, 'DASHBOARD_ZERO_COUNTS', False) or current_app.config.get('DASHBOARD_ZERO_COUNTS', False)

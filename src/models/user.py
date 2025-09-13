@@ -104,7 +104,7 @@ class Subject(db.Model):
             'name': self.name,
             'description': self.description,
             'academic_year_id': self.academic_year_id,
-            'price': float(self.price),
+            'price': float(self.price or 0),
             'is_active': self.is_active,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }

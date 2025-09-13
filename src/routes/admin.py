@@ -60,6 +60,13 @@ def require_admin(f):
 def get_dashboard_stats():
     """Get dashboard statistics"""
     try:
+        # Helper: safe ISO formatting (handles datetime/strings/None)
+        def _iso(v):
+            try:
+                return v.isoformat()
+            except Exception:
+                return str(v) if v is not None else None
+
         # Count statistics
         total_students = User.query.filter_by(user_type='student').count()
         active_students = User.query.filter_by(user_type='student', is_active=True).count()
@@ -71,7 +78,7 @@ def get_dashboard_stats():
         # Revenue calculation (approved subscriptions)
         approved_requests = SubscriptionRequest.query.filter_by(status='approved').all()
         # Safely sum amounts and avoid None/Decimal issues
-        total_revenue = sum(float(req.total_amount or 0) for req in approved_requests)
+        total_revenue = sum(float((req.total_amount or 0)) for req in approved_requests)
         
         # Recent activities
         recent_registrations = User.query.filter_by(user_type='student').order_by(
@@ -101,7 +108,7 @@ def get_dashboard_stats():
                         'id': u.id,
                         'full_name': u.full_name,
                         'username': u.username,
-                        'created_at': u.created_at.isoformat() if u.created_at else None,
+                        'created_at': _iso(u.created_at),
                         'is_active': u.is_active
                     }
                     for u in recent_registrations
@@ -109,10 +116,10 @@ def get_dashboard_stats():
                 'subscription_requests': [
                     {
                         'id': r.id,
-                        'user_name': r.user.full_name if r.user else None,
-                        'total_amount': float(r.total_amount or 0),
+                        'user_name': (r.user.full_name if getattr(r, 'user', None) else None),
+                        'total_amount': float((r.total_amount or 0)),
                         'status': r.status,
-                        'created_at': r.created_at.isoformat() if r.created_at else None
+                        'created_at': _iso(r.created_at)
                     }
                     for r in recent_requests
                 ]
@@ -120,6 +127,11 @@ def get_dashboard_stats():
         }), 200
         
     except Exception as e:
+        # Log full traceback for debugging in production logs
+        try:
+            current_app.logger.exception('Error in /api/admin/dashboard/stats')
+        except Exception:
+            pass
         return jsonify({
             'success': False,
             'message': 'حدث خطأ في الخادم'

@@ -10,6 +10,7 @@ from datetime import datetime
 import jwt
 import os
 import json
+from sqlalchemy.orm import joinedload
 from werkzeug.utils import secure_filename
 
 admin_bp = Blueprint('admin', __name__)
@@ -85,9 +86,12 @@ def get_dashboard_stats():
             User.created_at.desc()
         ).limit(5).all()
         
-        recent_requests = SubscriptionRequest.query.order_by(
-            SubscriptionRequest.created_at.desc()
-        ).limit(5).all()
+        recent_requests = (
+            SubscriptionRequest.query.options(joinedload(SubscriptionRequest.reviewer), joinedload(SubscriptionRequest.active_subscriptions))
+            .order_by(SubscriptionRequest.created_at.desc())
+            .limit(5)
+            .all()
+        )
         
         from flask import current_app
         zero = getattr(current_app.config, 'DASHBOARD_ZERO_COUNTS', False) or current_app.config.get('DASHBOARD_ZERO_COUNTS', False)

@@ -32,8 +32,19 @@ class User(db.Model):
     current_session_id = db.Column(db.String(64))  # nullable; set on login
     
     # Relationships
-    subscription_requests = db.relationship('SubscriptionRequest', foreign_keys='SubscriptionRequest.user_id', backref='user', lazy=True)
-    active_subscriptions = db.relationship('ActiveSubscription', backref='user', lazy=True)
+    subscription_requests = db.relationship(
+        'SubscriptionRequest',
+        foreign_keys='SubscriptionRequest.user_id',
+        back_populates='user',
+        lazy=True
+    )
+    reviewed_requests = db.relationship(
+        'SubscriptionRequest',
+        foreign_keys='SubscriptionRequest.reviewed_by',
+        back_populates='reviewer',
+        lazy=True
+    )
+    active_subscriptions = db.relationship('ActiveSubscription', backref='user', lazy=True, cascade='all, delete-orphan')
     lesson_progress = db.relationship('LessonProgress', backref='user', lazy=True)
     exam_attempts = db.relationship('ExamAttempt', backref='user', lazy=True)
     notifications = db.relationship('Notification', backref='user', lazy=True)
@@ -235,8 +246,9 @@ class SubscriptionRequest(db.Model):
     reviewed_by = db.Column(db.Integer, db.ForeignKey('users.id'))
     
     # Relationships
+    user = db.relationship('User', foreign_keys=[user_id], back_populates='subscription_requests')
     active_subscriptions = db.relationship('ActiveSubscription', backref='subscription_request', lazy=True)
-    reviewer = db.relationship('User', foreign_keys=[reviewed_by], backref='reviewed_requests')
+    reviewer = db.relationship('User', foreign_keys=[reviewed_by], back_populates='reviewed_requests')
     receipts = db.relationship('PaymentReceipt', backref='subscription_request', lazy=True, cascade='all, delete-orphan')
 
     def get_selected_subjects(self):

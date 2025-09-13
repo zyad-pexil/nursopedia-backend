@@ -736,18 +736,39 @@ def get_lesson_exams(lesson_id):
     except Exception:
         return jsonify({'success': False, 'message': 'حدث خطأ في الخادم'}), 500
 
+@admin_bp.route('/subjects/<int:subject_id>/exams', methods=['GET'])
+@cross_origin()
+@require_admin
+def get_subject_exams_admin(subject_id):
+    """List subject-level exams for a subject (subject_id set, lesson_id is null)"""
+    try:
+        exams = Exam.query.filter_by(subject_id=subject_id).order_by(Exam.created_at.desc()).all()
+        exams_data = []
+        for e in exams:
+            d = e.to_dict()
+            d['questions_count'] = Question.query.filter_by(exam_id=e.id).count()
+            exams_data.append(d)
+        return jsonify({'success': True, 'exams': exams_data}), 200
+    except Exception:
+        return jsonify({'success': False, 'message': 'حدث خطأ في الخادم'}), 500
+
 @admin_bp.route('/exams', methods=['POST'])
 @cross_origin()
 @require_admin
 def create_exam():
     try:
         data = request.get_json()
-        required = ['lesson_id','title','duration_minutes']
-        for f in required:
-            if not data.get(f):
-                return jsonify({'success': False, 'message': f'الحقل {f} مطلوب'}), 400
+        # Allow either subject-level or lesson-level exam
+        if not data.get('title') or not data.get('duration_minutes'):
+            return jsonify({'success': False, 'message': 'الحقل title و duration_minutes مطلوبة'}), 400
+        if not data.get('lesson_id') and not data.get('subject_id'):
+            return jsonify({'success': False, 'message': 'يلزم تحديد subject_id (امتحان شامل) أو lesson_id'}), 400
+        if data.get('lesson_id') and data.get('subject_id'):
+            return jsonify({'success': False, 'message': 'لا يمكن الجمع بين subject_id و lesson_id في نفس الامتحان'}), 400
+        
         exam = Exam(
-            lesson_id=data['lesson_id'],
+            subject_id=data.get('subject_id'),
+            lesson_id=data.get('lesson_id'),
             title=data['title'],
             description=data.get('description',''),
             duration_minutes=data['duration_minutes'],

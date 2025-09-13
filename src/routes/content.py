@@ -250,7 +250,7 @@ def update_lesson_progress(lesson_id):
 @cross_origin()
 @require_auth
 def get_subject_exams(subject_id):
-    """Get exams for a specific subject"""
+    """Get exams for a specific subject (both lesson-level and subject-level)"""
     try:
         user = request.current_user
         
@@ -261,8 +261,16 @@ def get_subject_exams(subject_id):
                 'message': 'ليس لديك صلاحية للوصول إلى هذه المادة'
             }), 403
         
-        # Exams are linked to lessons; join through Lesson to filter by subject
-        exams = (
+        # 1) Subject-level exams
+        subject_level_exams = (
+            db.session.query(Exam)
+            .filter(Exam.subject_id == subject_id, Exam.is_active == True)
+            .order_by(Exam.created_at.desc())
+            .all()
+        )
+        
+        # 2) Lesson-level exams for lessons under this subject
+        lesson_level_exams = (
             db.session.query(Exam)
             .join(Lesson, Exam.lesson_id == Lesson.id)
             .filter(Lesson.subject_id == subject_id, Exam.is_active == True)
@@ -270,9 +278,13 @@ def get_subject_exams(subject_id):
             .all()
         )
         
+        all_exams = list(subject_level_exams) + list(lesson_level_exams)
+        
         exams_data = []
-        for exam in exams:
+        for exam in all_exams:
             exam_data = exam.to_dict()
+            # Mark level for UI filtering
+            exam_data['is_subject_level'] = bool(exam.subject_id)
             
             # Get user's attempts for this exam
             attempts = ExamAttempt.query.filter_by(
@@ -314,9 +326,14 @@ def get_exam_details(exam_id):
         
         exam = Exam.query.get_or_404(exam_id)
         
-        # Check if user has access to this exam's subject via its lesson
-        lesson = Lesson.query.get(exam.lesson_id)
-        subject_id = lesson.subject_id if lesson else None
+        # Determine subject for access: subject-level or via lesson
+        subject_id = None
+        if getattr(exam, 'subject_id', None):
+            subject_id = exam.subject_id
+        elif getattr(exam, 'lesson_id', None):
+            lesson = Lesson.query.get(exam.lesson_id)
+            subject_id = lesson.subject_id if lesson else None
+        
         if not subject_id or not has_subject_access(user.id, subject_id):
             return jsonify({
                 'success': False,
@@ -389,9 +406,14 @@ def submit_exam(exam_id):
         
         exam = Exam.query.get_or_404(exam_id)
         
-        # Check if user has access to this exam's subject via its lesson
-        lesson = Lesson.query.get(exam.lesson_id)
-        subject_id = lesson.subject_id if lesson else None
+        # Determine subject for access: subject-level or via lesson
+        subject_id = None
+        if getattr(exam, 'subject_id', None):
+            subject_id = exam.subject_id
+        elif getattr(exam, 'lesson_id', None):
+            lesson = Lesson.query.get(exam.lesson_id)
+            subject_id = lesson.subject_id if lesson else None
+        
         if not subject_id or not has_subject_access(user.id, subject_id):
             return jsonify({
                 'success': False,
@@ -492,8 +514,15 @@ def get_exam_attempts(exam_id):
         
         exam = Exam.query.get_or_404(exam_id)
         
-        # Check if user has access to this exam's subject
-        if not has_subject_access(user.id, exam.subject_id):
+        # Determine subject for access: subject-level or via lesson
+        subject_id = None
+        if getattr(exam, 'subject_id', None):
+            subject_id = exam.subject_id
+        elif getattr(exam, 'lesson_id', None):
+            lesson = Lesson.query.get(exam.lesson_id)
+            subject_id = lesson.subject_id if lesson else None
+        
+        if not subject_id or not has_subject_access(user.id, subject_id):
             return jsonify({
                 'success': False,
                 'message': 'ليس لديك صلاحية للوصول إلى هذا الامتحان'
@@ -507,9 +536,9 @@ def get_exam_attempts(exam_id):
         attempts_data = [
             {
                 'id': attempt.id,
-                'score': attempt.score,
-                'completed_at': attempt.completed_at.isoformat(),
-                'passed': attempt.score >= exam.passing_score
+                'score': float(attempt.score) if attempt.score is not None else None,
+                'completed_at': attempt.end_time.isoformat() if attempt.end_time else None,
+                'passed': (float(attempt.score) if attempt.score is not None else 0) >= float(exam.passing_score)
             }
             for attempt in attempts
         ]
@@ -518,7 +547,7 @@ def get_exam_attempts(exam_id):
             'success': True,
             'attempts': attempts_data,
             'exam_title': exam.title,
-            'passing_score': exam.passing_score
+            'passing_score': float(exam.passing_score)
         }), 200
         
     except Exception as e:

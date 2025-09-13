@@ -154,7 +154,9 @@ class Exam(db.Model):
     __tablename__ = 'exams'
     
     id = db.Column(db.Integer, primary_key=True)
-    lesson_id = db.Column(db.Integer, db.ForeignKey('lessons.id'), nullable=False)
+    # Either subject-level exam (subject_id) or lesson-level exam (lesson_id)
+    subject_id = db.Column(db.Integer, db.ForeignKey('subjects.id'), nullable=True)
+    lesson_id = db.Column(db.Integer, db.ForeignKey('lessons.id'), nullable=True)
     title = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text)
     duration_minutes = db.Column(db.Integer, nullable=False)
@@ -172,6 +174,7 @@ class Exam(db.Model):
     def to_dict(self):
         return {
             'id': self.id,
+            'subject_id': self.subject_id,
             'lesson_id': self.lesson_id,
             'title': self.title,
             'description': self.description,

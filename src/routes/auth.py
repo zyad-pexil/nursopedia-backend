@@ -346,21 +346,14 @@ def upload_receipt():
         except Exception:
             drive_file_url = None
         
-        # في حال فشل Cloudinary، خزّن الملف في قاعدة البيانات كحل احتياطي
+        # إذا فشل رفع Cloudinary، لا نخزن في قاعدة البيانات ونُرجع خطأ
         if not drive_file_url:
-            filename = secure_filename(f"{user_id}_{uuid.uuid4().hex}_{file.filename}")
-            receipt = PaymentReceipt(
-                subscription_request_id=None,
-                user_id=int(user_id),
-                filename=filename,
-                content_type=file.mimetype or 'application/octet-stream',
-                data=file.read()
-            )
-            db.session.add(receipt)
-            db.session.flush()  # get receipt.id
-            drive_file_url = f"/api/auth/receipts/{receipt.id}"
+            return jsonify({
+                'success': False,
+                'message': 'فشل رفع الإيصال إلى Cloudinary'
+            }), 500
         
-        # تحديث طلب الاشتراك بالرابط (Cloudinary أو قاعدة البيانات)
+        # تحديث طلب الاشتراك بالرابط الخارجي فقط
         subscription_request = SubscriptionRequest.query.filter_by(
             user_id=user_id, 
             status='pending'
@@ -368,11 +361,6 @@ def upload_receipt():
         
         if subscription_request:
             subscription_request.payment_receipt_url = drive_file_url
-            try:
-                if 'receipt' in locals() and receipt and not receipt.subscription_request_id:
-                    receipt.subscription_request_id = subscription_request.id
-            except Exception:
-                pass
             db.session.commit()
         
         return jsonify({

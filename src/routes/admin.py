@@ -408,15 +408,6 @@ def get_subscription_requests():
             else:
                 req_data['selected_subjects'] = []
 
-            # Fallback: if payment_receipt_url missing, use first attached receipt
-            if not req_data.get('payment_receipt_url'):
-                try:
-                    first_receipt = req.receipts[0] if getattr(req, 'receipts', None) else None
-                    if first_receipt:
-                        req_data['payment_receipt_url'] = f"/api/auth/receipts/{first_receipt.id}"
-                except Exception:
-                    pass
-            
             requests_data.append(req_data)
         
         return jsonify({

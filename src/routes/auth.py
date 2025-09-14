@@ -353,11 +353,17 @@ def upload_receipt():
                 'message': 'فشل رفع الإيصال إلى Cloudinary'
             }), 500
         
-        # تحديث طلب الاشتراك بالرابط الخارجي فقط
-        subscription_request = SubscriptionRequest.query.filter_by(
-            user_id=user_id, 
-            status='pending'
-        ).first()
+        # تحديث طلب الاشتراك بالرابط الخارجي فقط - اربطه بأحدث طلب للمستخدم لتفادي سباق الموافقات
+        try:
+            uid_int = int(user_id)
+        except Exception:
+            uid_int = user_id
+        subscription_request = (
+            SubscriptionRequest.query
+            .filter_by(user_id=uid_int)
+            .order_by(SubscriptionRequest.created_at.desc())
+            .first()
+        )
         
         if subscription_request:
             subscription_request.payment_receipt_url = drive_file_url

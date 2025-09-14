@@ -140,9 +140,17 @@ class Lesson(db.Model):
     lesson_progress = db.relationship('LessonProgress', backref='lesson', lazy=True)
 
     def get_attachments(self):
-        if self.attachments:
-            return json.loads(self.attachments)
-        return []
+        """Safely decode attachments JSON; return empty list on any error."""
+        raw = self.attachments
+        if not raw:
+            return []
+        try:
+            data = json.loads(raw)
+            # Ensure list shape
+            return data if isinstance(data, list) else []
+        except Exception:
+            # Fallback to empty list if stored value is invalid JSON (legacy rows)
+            return []
 
     def set_attachments(self, attachments_list):
         self.attachments = json.dumps(attachments_list)
@@ -183,15 +191,28 @@ class Exam(db.Model):
     attempts = db.relationship('ExamAttempt', backref='exam', lazy=True)
 
     def to_dict(self):
+        """Serialize exam safely, handling legacy NULL/invalid numeric fields."""
+        try:
+            passing = float(self.passing_score) if self.passing_score not in (None, '') else 60.0
+        except Exception:
+            passing = 60.0
+        try:
+            duration = int(self.duration_minutes or 0)
+        except Exception:
+            duration = 0
+        try:
+            attempts = int(self.max_attempts or 0)
+        except Exception:
+            attempts = 0
         return {
             'id': self.id,
             'subject_id': self.subject_id,
             'lesson_id': self.lesson_id,
             'title': self.title,
             'description': self.description,
-            'duration_minutes': self.duration_minutes,
-            'max_attempts': self.max_attempts,
-            'passing_score': float(self.passing_score),
+            'duration_minutes': duration,
+            'max_attempts': attempts,
+            'passing_score': passing,
             'show_results_immediately': self.show_results_immediately,
             'is_active': self.is_active,
             'created_at': self.created_at.isoformat() if self.created_at else None

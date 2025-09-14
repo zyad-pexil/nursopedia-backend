@@ -290,7 +290,7 @@ def get_subject_exams(subject_id):
             attempts = ExamAttempt.query.filter_by(
                 user_id=user.id,
                 exam_id=exam.id
-            ).order_by(ExamAttempt.created_at.desc()).all()
+            ).order_by(ExamAttempt.start_time.desc()).all()
             
             exam_data['attempts_count'] = len(attempts)
             # Only the first attempt's score counts
@@ -301,7 +301,7 @@ def get_subject_exams(subject_id):
                     break
             exam_data['best_score'] = float(first_attempt.score) if first_attempt and first_attempt.score is not None else None
             exam_data['remaining_attempts'] = None
-            exam_data['last_attempt'] = attempts[0].created_at.isoformat() if attempts else None
+            exam_data['last_attempt'] = attempts[0].start_time.isoformat() if attempts else None
             
             exams_data.append(exam_data)
         

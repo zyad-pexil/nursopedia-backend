@@ -67,14 +67,14 @@ PGDATABASE = os.getenv('PGDATABASE') or os.getenv('POSTGRES_DB') or os.getenv('P
 
 db_uri = None
 if _database_url:
-    # normalize scheme/driver for SQLAlchemy
+    # normalize scheme/driver for SQLAlchemy (use psycopg for Python 3.13 compatibility)
     if _database_url.startswith('postgres://'):
-        _database_url = _database_url.replace('postgres://', 'postgresql+psycopg2://', 1)
+        _database_url = _database_url.replace('postgres://', 'postgresql+psycopg://', 1)
     elif _database_url.startswith('postgresql://'):
-        _database_url = _database_url.replace('postgresql://', 'postgresql+psycopg2://', 1)
+        _database_url = _database_url.replace('postgresql://', 'postgresql+psycopg://', 1)
     db_uri = _database_url
 elif PGHOST and PGUSER and PGPASSWORD and PGDATABASE:
-    db_uri = f"postgresql+psycopg2://{PGUSER}:{PGPASSWORD}@{PGHOST}:{PGPORT}/{PGDATABASE}"
+    db_uri = f"postgresql+psycopg://{PGUSER}:{PGPASSWORD}@{PGHOST}:{PGPORT}/{PGDATABASE}"
 
 # 2) MySQL (Railway or custom)
 if not db_uri:

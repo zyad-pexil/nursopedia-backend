@@ -56,19 +56,39 @@ def _is_running_on_railway() -> bool:
         or os.getenv('RAILWAY_ENVIRONMENT_NAME')
     )
 
-# Build SQLALCHEMY_DATABASE_URI from envs when available (Railway MySQL)
-# Use discrete env vars only; no MYSQL_PUBLIC_URL/DATABASE_URL support
-MYSQL_HOST = os.getenv('MYSQLHOST') or os.getenv('DB_HOST')
-MYSQL_PORT = os.getenv('MYSQLPORT') or os.getenv('DB_PORT', '3306')
-MYSQL_USER = os.getenv('MYSQLUSER') or os.getenv('DB_USER')
-MYSQL_PASSWORD = os.getenv('MYSQLPASSWORD') or os.getenv('DB_PASSWORD')
-MYSQL_DATABASE = os.getenv('MYSQLDATABASE') or os.getenv('DB_NAME')
+# Build SQLALCHEMY_DATABASE_URI from env vars (Render Postgres preferred, then MySQL, else SQLite)
+# 1) Render PostgreSQL / generic Postgres
+_database_url = os.getenv('DATABASE_URL') or os.getenv('POSTGRES_URL') or os.getenv('EXTERNAL_DATABASE_URL')
+PGHOST = os.getenv('PGHOST') or os.getenv('POSTGRES_HOST')
+PGPORT = os.getenv('PGPORT') or os.getenv('POSTGRES_PORT', '5432')
+PGUSER = os.getenv('PGUSER') or os.getenv('POSTGRES_USER')
+PGPASSWORD = os.getenv('PGPASSWORD') or os.getenv('POSTGRES_PASSWORD')
+PGDATABASE = os.getenv('PGDATABASE') or os.getenv('POSTGRES_DB') or os.getenv('POSTGRES_DATABASE')
 
-if MYSQL_HOST and MYSQL_USER and MYSQL_PASSWORD and MYSQL_DATABASE:
-    # e.g., mysql+pymysql://user:pass@host:3306/dbname
-    db_uri = f"mysql+pymysql://{MYSQL_USER}:{MYSQL_PASSWORD}@{MYSQL_HOST}:{MYSQL_PORT}/{MYSQL_DATABASE}?charset=utf8mb4"
-else:
-    # Fallback to SQLite (local dev or when MySQL not configured)
+db_uri = None
+if _database_url:
+    # normalize scheme/driver for SQLAlchemy
+    if _database_url.startswith('postgres://'):
+        _database_url = _database_url.replace('postgres://', 'postgresql+psycopg2://', 1)
+    elif _database_url.startswith('postgresql://'):
+        _database_url = _database_url.replace('postgresql://', 'postgresql+psycopg2://', 1)
+    db_uri = _database_url
+elif PGHOST and PGUSER and PGPASSWORD and PGDATABASE:
+    db_uri = f"postgresql+psycopg2://{PGUSER}:{PGPASSWORD}@{PGHOST}:{PGPORT}/{PGDATABASE}"
+
+# 2) MySQL (Railway or custom)
+if not db_uri:
+    MYSQL_HOST = os.getenv('MYSQLHOST') or os.getenv('DB_HOST')
+    MYSQL_PORT = os.getenv('MYSQLPORT') or os.getenv('DB_PORT', '3306')
+    MYSQL_USER = os.getenv('MYSQLUSER') or os.getenv('DB_USER')
+    MYSQL_PASSWORD = os.getenv('MYSQLPASSWORD') or os.getenv('DB_PASSWORD')
+    MYSQL_DATABASE = os.getenv('MYSQLDATABASE') or os.getenv('DB_NAME')
+    if MYSQL_HOST and MYSQL_USER and MYSQL_PASSWORD and MYSQL_DATABASE:
+        # e.g., mysql+pymysql://user:pass@host:3306/dbname
+        db_uri = f"mysql+pymysql://{MYSQL_USER}:{MYSQL_PASSWORD}@{MYSQL_HOST}:{MYSQL_PORT}/{MYSQL_DATABASE}?charset=utf8mb4"
+
+# 3) Fallback to SQLite (local dev or when no DB configured)
+if not db_uri:
     _default_db_dir = '/tmp' if _is_running_on_railway() else os.path.join(os.path.dirname(__file__), 'database')
     _db_default = os.path.join(_default_db_dir, 'app.db')
     _db_path_env = os.getenv('DB_PATH')

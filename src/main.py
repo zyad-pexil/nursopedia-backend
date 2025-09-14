@@ -137,6 +137,79 @@ def ensure_admin_exists():
         db.session.add(admin)
         db.session.commit()
 
+
+def ensure_academic_data_seeded():
+    """Seed academic years and subjects if they do not exist (idempotent)."""
+    from src.models.user import AcademicYear, Subject
+    from decimal import Decimal
+
+    years = [
+        {"id": 1, "name": "الفرقة الأولى", "description": "الفرقة الأولى - كلية التمريض", "is_active": True},
+        {"id": 2, "name": "الفرقة الثانية", "description": "الفرقة الثانية - كلية التمريض", "is_active": True},
+    ]
+
+    subjects = [
+        {"id": 1, "name": "أساسيات تمريض (عملي)", "description": "أساسيات العناية بالمرضى والرعاية السريرية.", "academic_year_id": 1, "price": 150, "is_active": True},
+        {"id": 2, "name": "أساسيات تمريض(نظري)", "description": "مبادئ وأسس التمريض النظري.", "academic_year_id": 1, "price": 150, "is_active": True},
+        {"id": 3, "name": "تشريح", "description": "دراسة تركيب جسم الإنسان.", "academic_year_id": 1, "price": 30, "is_active": True},
+        {"id": 4, "name": "ميكروبيولوجي", "description": "دراسة الكائنات الدقيقة وتأثيرها على الجسم.", "academic_year_id": 1, "price": 150, "is_active": True},
+        {"id": 5, "name": "تمريض اطفال عملي", "description": "رعاية الأطفال المرضى سريريًا.", "academic_year_id": 2, "price": 125, "is_active": True},
+        {"id": 6, "name": "تمريض اطفال نظري", "description": "مبادئ تمريض الأطفال نظريًا.", "academic_year_id": 2, "price": 125, "is_active": True},
+        {"id": 7, "name": "النساء والتوليد عملي", "description": "رعاية الحوامل والمواليد سريريًا.", "academic_year_id": 2, "price": 125, "is_active": True},
+        {"id": 8, "name": "النساء والتوليد نظري", "description": "مبادئ تمريض الحمل والولادة نظريًا.", "academic_year_id": 2, "price": 125, "is_active": True},
+        {"id": 9, "name": "وظائف الاعضاء", "description": "دراسة وظائف أعضاء الجسم.", "academic_year_id": 1, "price": 30, "is_active": True},
+        {"id": 10, "name": "كيمياء حيوية", "description": "دراسة العمليات الكيميائية في الجسم.", "academic_year_id": 1, "price": 20, "is_active": True},
+        {"id": 11, "name": "جراحه اطفال", "description": "دراسة العمليات الجراحية ورعاية المرضى قبل وبعد الجراحة.", "academic_year_id": 2, "price": 20, "is_active": True},
+        {"id": 12, "name": "طب اطفال", "description": "دراسة صحة وعلاج الأطفال.", "academic_year_id": 2, "price": 30, "is_active": True},
+        {"id": 13, "name": "طب النساء والتوليد", "description": "دراسة الحمل، الولادة، وأمراض النساء.", "academic_year_id": 2, "price": 30, "is_active": True},
+    ]
+
+    created_any = False
+
+    # Ensure academic years exist
+    for y in years:
+        if not AcademicYear.query.get(y["id"]):
+            ay = AcademicYear(
+                id=y["id"],
+                name=y["name"],
+                description=y.get("description"),
+                is_active=bool(y.get("is_active", True)),
+            )
+            db.session.add(ay)
+            created_any = True
+
+    db.session.flush()
+
+    # Ensure subjects exist
+    for s in subjects:
+        if not Subject.query.get(s["id"]):
+            try:
+                price_val = Decimal(str(s.get("price", 0)))
+            except Exception:
+                price_val = s.get("price", 0)
+            sub = Subject(
+                id=s["id"],
+                name=s["name"],
+                description=s.get("description"),
+                academic_year_id=s["academic_year_id"],
+                price=price_val,
+                is_active=bool(s.get("is_active", True)),
+            )
+            db.session.add(sub)
+            created_any = True
+
+    if created_any:
+        db.session.commit()
+        # Fix Postgres sequences if needed to avoid duplicate key on future inserts
+        try:
+            if db.engine.url.get_backend_name().startswith('postgresql'):
+                from sqlalchemy import text as _text
+                with db.engine.connect() as conn:
+                    conn.execute(_text("SELECT setval(pg_get_serial_sequence('academic_years','id'), COALESCE((SELECT MAX(id) FROM academic_years), 1), true)"))
+                    conn.execute(_text("SELECT setval(pg_get_serial_sequence('subjects','id'), COALESCE((SELECT MAX(id) FROM subjects), 1), true)"))
+        except Exception:
+            pass
+
 # Try connecting with retries to wait for MySQL readiness
 import time
 
@@ -156,6 +229,7 @@ with app.app_context():
     wait_for_db()
     db.create_all()
     ensure_admin_exists()
+    ensure_academic_data_seeded()
 
 # Serve uploaded receipts stored under configurable dir
 @app.route('/uploads/receipts/<path:filename>')

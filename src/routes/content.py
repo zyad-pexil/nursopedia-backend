@@ -119,8 +119,8 @@ def get_subject_lessons(subject_id):
             ).first()
             
             lesson_data['progress'] = {
-                'completed': progress.is_completed if progress else False,
-                'watch_time': progress.watch_time_seconds if progress else 0,
+                'completed': bool(progress.is_completed) if progress and progress.is_completed is not None else False,
+                'watch_time': int(progress.watch_time_seconds or 0) if progress else 0,
                 'last_watched': progress.last_accessed_at.isoformat() if progress and progress.last_accessed_at else None
             }
             

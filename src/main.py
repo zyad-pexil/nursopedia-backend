@@ -28,12 +28,10 @@ app.config['SECRET_KEY'] = 'nursopedia_secret_key_2024_very_secure'
 app.config['DASHBOARD_ZERO_COUNTS'] = os.getenv('DASHBOARD_ZERO_COUNTS', '0') == '1'
 
 # Enable CORS for API routes with explicit origins and headers
-_allowed_origins = os.getenv('CORS_ORIGINS', 'http://localhost:5173,https://nursopedia.vercel.app').split(',')
-_allowed_origins = [o.strip() for o in _allowed_origins if o.strip()]
 CORS(
     app,
     resources={r"/api/*": {
-        "origins": _allowed_origins,
+        "origins": ["*"],
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         "allow_headers": ["Content-Type", "Authorization"],
         "expose_headers": ["Content-Type"],

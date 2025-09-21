@@ -122,18 +122,22 @@ class Subject(db.Model):
 
 class Lesson(db.Model):
     __tablename__ = 'lessons'
-    
+
     id = db.Column(db.Integer, primary_key=True)
-    subject_id = db.Column(db.Integer, db.ForeignKey('subjects.id'), nullable=False)
+    subject_id = db.Column(db.Integer, db.ForeignKey('subjects.id'), nullable=False, index=True)
     title = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text)
     video_url = db.Column(db.String(500))
     video_duration = db.Column(db.Integer)  # in seconds
     attachments = db.Column(db.Text)  # JSON string
-    lesson_order = db.Column(db.Integer, nullable=False)
-    is_active = db.Column(db.Boolean, default=True)
+    lesson_order = db.Column(db.Integer, nullable=False, index=True)
+    is_active = db.Column(db.Boolean, default=True, index=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        db.Index('idx_lessons_subject_order', 'subject_id', 'lesson_order'),
+    )
     
     # Relationships
     exams = db.relationship('Exam', backref='lesson', lazy=True)
@@ -171,19 +175,19 @@ class Lesson(db.Model):
 
 class Exam(db.Model):
     __tablename__ = 'exams'
-    
+
     id = db.Column(db.Integer, primary_key=True)
     # Either subject-level exam (subject_id) or lesson-level exam (lesson_id)
-    subject_id = db.Column(db.Integer, db.ForeignKey('subjects.id'), nullable=True)
-    lesson_id = db.Column(db.Integer, db.ForeignKey('lessons.id'), nullable=True)
+    subject_id = db.Column(db.Integer, db.ForeignKey('subjects.id'), nullable=True, index=True)
+    lesson_id = db.Column(db.Integer, db.ForeignKey('lessons.id'), nullable=True, index=True)
     title = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text)
     duration_minutes = db.Column(db.Integer, nullable=False)
     max_attempts = db.Column(db.Integer, default=3)
     passing_score = db.Column(db.Numeric(5, 2), default=60.00)
     show_results_immediately = db.Column(db.Boolean, default=True)
-    is_active = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    is_active = db.Column(db.Boolean, default=True, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
@@ -297,14 +301,14 @@ class SubscriptionRequest(db.Model):
 
 class ActiveSubscription(db.Model):
     __tablename__ = 'active_subscriptions'
-    
+
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    subject_id = db.Column(db.Integer, db.ForeignKey('subjects.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    subject_id = db.Column(db.Integer, db.ForeignKey('subjects.id'), nullable=False, index=True)
     subscription_request_id = db.Column(db.Integer, db.ForeignKey('subscription_requests.id'), nullable=True)
     start_date = db.Column(db.DateTime, default=datetime.utcnow)
     end_date = db.Column(db.DateTime)  # Can be NULL for lifetime subscriptions
-    is_active = db.Column(db.Boolean, default=True)
+    is_active = db.Column(db.Boolean, default=True, index=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def to_dict(self):
@@ -321,15 +325,19 @@ class ActiveSubscription(db.Model):
 
 class LessonProgress(db.Model):
     __tablename__ = 'lesson_progress'
-    
+
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    lesson_id = db.Column(db.Integer, db.ForeignKey('lessons.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    lesson_id = db.Column(db.Integer, db.ForeignKey('lessons.id'), nullable=False, index=True)
     watch_time_seconds = db.Column(db.Integer, default=0)
     completion_percentage = db.Column(db.Numeric(5, 2), default=0.00)
-    is_completed = db.Column(db.Boolean, default=False)
+    is_completed = db.Column(db.Boolean, default=False, index=True)
     first_accessed_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_accessed_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        db.Index('idx_lesson_progress_user_lesson', 'user_id', 'lesson_id'),
+    )
 
     def to_dict(self):
         return {
@@ -345,12 +353,12 @@ class LessonProgress(db.Model):
 
 class ExamAttempt(db.Model):
     __tablename__ = 'exam_attempts'
-    
+
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    exam_id = db.Column(db.Integer, db.ForeignKey('exams.id'), nullable=False)
-    attempt_number = db.Column(db.Integer, nullable=False)
-    start_time = db.Column(db.DateTime, default=datetime.utcnow)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    exam_id = db.Column(db.Integer, db.ForeignKey('exams.id'), nullable=False, index=True)
+    attempt_number = db.Column(db.Integer, nullable=False, index=True)
+    start_time = db.Column(db.DateTime, default=datetime.utcnow, index=True)
     end_time = db.Column(db.DateTime)
     score = db.Column(db.Numeric(5, 2))
     total_points = db.Column(db.Numeric(5, 2), nullable=False)
@@ -358,6 +366,11 @@ class ExamAttempt(db.Model):
     is_passed = db.Column(db.Boolean)
     is_completed = db.Column(db.Boolean, default=False)
     time_taken_seconds = db.Column(db.Integer)
+
+    __table_args__ = (
+        db.Index('idx_exam_attempts_user_exam', 'user_id', 'exam_id'),
+        db.Index('idx_exam_attempts_user_exam_attempt', 'user_id', 'exam_id', 'attempt_number'),
+    )
     
     # Relationships
     answers = db.relationship('ExamAnswer', backref='attempt', lazy=True)
@@ -497,13 +510,13 @@ class AdditionalSubjectRequest(db.Model):
 
 class Question(db.Model):
     __tablename__ = 'questions'
-    
+
     id = db.Column(db.Integer, primary_key=True)
-    exam_id = db.Column(db.Integer, db.ForeignKey('exams.id'), nullable=False)
+    exam_id = db.Column(db.Integer, db.ForeignKey('exams.id'), nullable=False, index=True)
     question_text = db.Column(db.Text, nullable=False)
     question_type = db.Column(db.Enum('multiple_choice', 'true_false', 'short_answer', name='question_types'), default='multiple_choice')
-    order = db.Column(db.Integer, default=1)
-    is_active = db.Column(db.Boolean, default=True)
+    order = db.Column(db.Integer, default=1, index=True)
+    is_active = db.Column(db.Boolean, default=True, index=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
@@ -527,15 +540,20 @@ class Question(db.Model):
 
 class Answer(db.Model):
     __tablename__ = 'answers'
-    
+
     id = db.Column(db.Integer, primary_key=True)
-    question_id = db.Column(db.Integer, db.ForeignKey('questions.id'), nullable=False)
+    question_id = db.Column(db.Integer, db.ForeignKey('questions.id'), nullable=False, index=True)
     answer_text = db.Column(db.Text, nullable=False)
-    is_correct = db.Column(db.Boolean, default=False)
-    order = db.Column(db.Integer, default=1)
-    is_active = db.Column(db.Boolean, default=True)
+    is_correct = db.Column(db.Boolean, default=False, index=True)
+    order = db.Column(db.Integer, default=1, index=True)
+    is_active = db.Column(db.Boolean, default=True, index=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        db.Index('idx_answers_question_correct', 'question_id', 'is_correct'),
+        db.Index('idx_answers_question_active', 'question_id', 'is_active'),
+    )
     
     def __repr__(self):
         return f'<Answer {self.id}: {self.answer_text[:30]}>'

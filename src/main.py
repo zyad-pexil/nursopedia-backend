@@ -15,11 +15,56 @@ from flask import Flask, send_from_directory
 from flask_cors import CORS
 from src.models.user import db
 from flask_migrate import Migrate
-from sqlalchemy import text
+from sqlalchemy import text, event
+from sqlalchemy.engine import Engine
 from src.routes.user import user_bp
 from src.routes.auth import auth_bp
 from src.routes.content import content_bp
 from src.routes.admin import admin_bp
+
+# Optimize SQLite connections when used (dev/fallback)
+try:
+    import sqlite3
+
+    @event.listens_for(Engine, "connect")
+    def _set_sqlite_pragma(dbapi_connection, connection_record):
+        # Apply only to SQLite connections
+        if isinstance(dbapi_connection, sqlite3.Connection):
+            cursor = dbapi_connection.cursor()
+            # WAL improves concurrency on reads
+            cursor.execute("PRAGMA journal_mode=WAL;")
+            # NORMAL reduces fsyncs while keeping reasonable durability
+            cursor.execute("PRAGMA synchronous=NORMAL;")
+            # Cache ~20MB in-memory for query speed (negative => KiB)
+            cursor.execute("PRAGMA cache_size=-20000;")
+            # Enforce foreign keys
+            cursor.execute("PRAGMA foreign_keys=ON;")
+            cursor.close()
+except Exception:
+    pass
+
+# PostgreSQL session tuning (timeouts, app name, timezone)
+try:
+    @event.listens_for(Engine, "connect")
+    def _set_postgres_settings(dbapi_connection, connection_record):
+        try:
+            # psycopg(3) connection exposes .cursor(); if not Postgres, statements will fail and be ignored
+            with dbapi_connection.cursor() as cur:
+                # Quick probe; no-op for performance
+                cur.execute("SELECT 1;")
+                # Timeouts in milliseconds (safe defaults). Can be overridden via env.
+                cur.execute("SET SESSION statement_timeout TO %s;", (os.getenv('PG_STATEMENT_TIMEOUT_MS', '5000'),))
+                cur.execute("SET SESSION idle_in_transaction_session_timeout TO %s;", (os.getenv('PG_IDLE_IN_XACT_TIMEOUT_MS', '10000'),))
+                cur.execute("SET SESSION lock_timeout TO %s;", (os.getenv('PG_LOCK_TIMEOUT_MS', '3000'),))
+                # Application name helps in pg_stat_activity
+                cur.execute("SET SESSION application_name TO %s;", (os.getenv('PG_APPLICATION_NAME', 'nursopedia-backend'),))
+                # Force UTC for consistency
+                cur.execute("SET SESSION TIME ZONE 'UTC';")
+        except Exception:
+            # Ignore for non-Postgres drivers
+            pass
+except Exception:
+    pass
 
 app = Flask(__name__, static_folder=os.path.join(os.path.dirname(__file__), 'static'))
 app.config['SECRET_KEY'] = 'nursopedia_secret_key_2024_very_secure'
@@ -97,12 +142,17 @@ if not db_uri:
 app.config['SQLALCHEMY_DATABASE_URI'] = db_uri
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+# Performance optimizations
+app.config['SQLALCHEMY_COMMIT_ON_TEARDOWN'] = False
+
 # Configure engine/pool options to better handle cold starts on Railway
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'pool_pre_ping': True,           # validate connections before use
     'pool_recycle': 280,             # recycle before MySQL 8 default wait_timeout (in secs)
-    'pool_size': int(os.getenv('DB_POOL_SIZE', 5)),
-    'max_overflow': int(os.getenv('DB_MAX_OVERFLOW', 5)),
+    'pool_size': int(os.getenv('DB_POOL_SIZE', 10)),  # Increased pool size for better performance
+    'max_overflow': int(os.getenv('DB_MAX_OVERFLOW', 20)),  # Increased max overflow
+    'pool_timeout': 30,              # timeout for getting connection from pool
+    'echo': False,                   # disable SQL logging in production
 }
 
 # Configure max content length if needed (e.g., 10MB receipts)

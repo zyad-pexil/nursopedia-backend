@@ -47,22 +47,63 @@ except Exception:
 try:
     @event.listens_for(Engine, "connect")
     def _set_postgres_settings(dbapi_connection, connection_record):
+        """Configure safe per-connection settings for PostgreSQL.
+        Runs in autocommit and rolls back on any error to avoid leaving
+        the connection in an aborted transaction state.
+        """
         try:
-            # psycopg(3) connection exposes .cursor(); if not Postgres, statements will fail and be ignored
+            # Allow disabling via env if needed for debugging
+            if os.getenv('PG_TUNING_DISABLE', '0') == '1':
+                return
+
+            # Ensure we are on psycopg3 (PostgreSQL) connection
+            try:
+                import psycopg  # psycopg3
+                if not isinstance(dbapi_connection, psycopg.Connection):
+                    return
+            except Exception:
+                return
+
+            # Sanitize numeric envs (milliseconds)
+            def _digits(val: str, default: int) -> str:
+                try:
+                    return str(int(str(val)))
+                except Exception:
+                    return str(default)
+
+            st = _digits(os.getenv('PG_STATEMENT_TIMEOUT_MS', '5000'), 5000)
+            ixt = _digits(os.getenv('PG_IDLE_IN_XACT_TIMEOUT_MS', '10000'), 10000)
+            lt = _digits(os.getenv('PG_LOCK_TIMEOUT_MS', '3000'), 3000)
+            app_name = os.getenv('PG_APPLICATION_NAME', 'nursopedia-backend')
+
+            prev_autocommit = getattr(dbapi_connection, 'autocommit', None)
+            if prev_autocommit is not None:
+                dbapi_connection.autocommit = True
+
             with dbapi_connection.cursor() as cur:
-                # Quick probe; no-op for performance
-                cur.execute("SELECT 1;")
-                # Timeouts in milliseconds (safe defaults). Can be overridden via env.
-                cur.execute("SET SESSION statement_timeout TO %s;", (os.getenv('PG_STATEMENT_TIMEOUT_MS', '5000'),))
-                cur.execute("SET SESSION idle_in_transaction_session_timeout TO %s;", (os.getenv('PG_IDLE_IN_XACT_TIMEOUT_MS', '10000'),))
-                cur.execute("SET SESSION lock_timeout TO %s;", (os.getenv('PG_LOCK_TIMEOUT_MS', '3000'),))
-                # Application name helps in pg_stat_activity
-                cur.execute("SET SESSION application_name TO %s;", (os.getenv('PG_APPLICATION_NAME', 'nursopedia-backend'),))
-                # Force UTC for consistency
-                cur.execute("SET SESSION TIME ZONE 'UTC';")
+                # Avoid parameterization for SET numeric values; set directly
+                cur.execute(f"SET SESSION statement_timeout = {st}")
+                cur.execute(f"SET SESSION idle_in_transaction_session_timeout = {ixt}")
+                cur.execute(f"SET SESSION lock_timeout = {lt}")
+                cur.execute("SET SESSION TIME ZONE 'UTC'")
+                # application_name: prefer param, fallback to quoted string
+                try:
+                    cur.execute("SET SESSION application_name = %s", (app_name,))
+                except Exception:
+                    _escaped = app_name.replace("'", "''")
+                    cur.execute(f"SET SESSION application_name = '{_escaped}'")
         except Exception:
-            # Ignore for non-Postgres drivers
-            pass
+            # If anything failed, ensure the connection is not left aborted
+            try:
+                dbapi_connection.rollback()
+            except Exception:
+                pass
+        finally:
+            try:
+                if prev_autocommit is not None:
+                    dbapi_connection.autocommit = prev_autocommit
+            except Exception:
+                pass
 except Exception:
     pass
 

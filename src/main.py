@@ -56,10 +56,10 @@ try:
             if os.getenv('PG_TUNING_DISABLE', '0') == '1':
                 return
 
-            # Ensure we are on psycopg3 (PostgreSQL) connection
+            # Ensure we are on psycopg2 (PostgreSQL) connection
             try:
-                import psycopg  # psycopg3
-                if not isinstance(dbapi_connection, psycopg.Connection):
+                import psycopg2
+                if not isinstance(dbapi_connection, psycopg2.extensions.connection):
                     return
             except Exception:
                 return
@@ -71,9 +71,9 @@ try:
                 except Exception:
                     return str(default)
 
-            st = _digits(os.getenv('PG_STATEMENT_TIMEOUT_MS', '5000'), 5000)
-            ixt = _digits(os.getenv('PG_IDLE_IN_XACT_TIMEOUT_MS', '10000'), 10000)
-            lt = _digits(os.getenv('PG_LOCK_TIMEOUT_MS', '3000'), 3000)
+            st = _digits(os.getenv('PG_STATEMENT_TIMEOUT_MS', '30000'), 30000)  # Increased to 30s
+            ixt = _digits(os.getenv('PG_IDLE_IN_XACT_TIMEOUT_MS', '60000'), 60000)  # Increased to 60s
+            lt = _digits(os.getenv('PG_LOCK_TIMEOUT_MS', '10000'), 10000)  # Increased to 10s
             app_name = os.getenv('PG_APPLICATION_NAME', 'nursopedia-backend')
 
             with dbapi_connection.cursor() as cur:
@@ -101,6 +101,18 @@ except Exception:
 
 app = Flask(__name__, static_folder=os.path.join(os.path.dirname(__file__), 'static'))
 app.config['SECRET_KEY'] = 'nursopedia_secret_key_2024_very_secure'
+
+# Configure database URI with SSL for PostgreSQL
+database_url = os.getenv('DATABASE_URL')
+if database_url and database_url.startswith('postgresql://'):
+    # Ensure SSL is enabled for PostgreSQL connections
+    if '?' in database_url:
+        database_url += '&sslmode=require'
+    else:
+        database_url += '?sslmode=require'
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+else:
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 
 # Optional: zero admin dashboard counters for demo/delivery
 app.config['DASHBOARD_ZERO_COUNTS'] = os.getenv('DASHBOARD_ZERO_COUNTS', '0') == '1'

@@ -186,10 +186,20 @@ def get_lesson_details(lesson_id):
     """Get detailed information about a specific lesson"""
     try:
         user = request.current_user
-        
+
         lesson = Lesson.query.get_or_404(lesson_id)
-        
+
+        # Log for debugging
+        current_app.logger.info(f"Lesson {lesson_id}: subject_id={lesson.subject_id}, title={lesson.title}")
+
         # Check if user has access to this lesson's subject
+        if lesson.subject_id is None:
+            current_app.logger.error(f"Lesson {lesson_id} has no subject_id")
+            return jsonify({
+                'success': False,
+                'message': 'الدرس غير مرتبط بمادة'
+            }), 500
+
         if not has_subject_access(user.id, lesson.subject_id):
             return jsonify({
                 'success': False,
@@ -316,28 +326,18 @@ def get_subject_exams(subject_id):
         if cached is not None:
             return jsonify({'success': True, 'exams': cached}), 200
 
-        # Get all exam IDs first for this subject
-        subject_exam_ids = (
-            db.session.query(Exam.id)
-            .filter(Exam.subject_id == subject_id, Exam.is_active == True)
-            .subquery()
-        )
-
-        lesson_exam_ids = (
-            db.session.query(Exam.id)
-            .join(Lesson, Exam.lesson_id == Lesson.id)
-            .filter(Lesson.subject_id == subject_id, Exam.is_active == True)
-            .subquery()
-        )
-
-        # Combine exam IDs
-        all_exam_ids = db.session.query(subject_exam_ids.union(lesson_exam_ids).alias('exam_ids')).subquery()
-
-        # Get all exams with their attempts in a single query
+        # Get all exams for this subject (both subject-level and lesson-level)
         exams_with_attempts = (
             db.session.query(Exam, ExamAttempt)
             .outerjoin(ExamAttempt, (ExamAttempt.user_id == user.id) & (ExamAttempt.exam_id == Exam.id))
-            .filter(Exam.id.in_(db.session.query(all_exam_ids.c.exam_ids)))
+            .outerjoin(Lesson, Exam.lesson_id == Lesson.id)
+            .filter(
+                Exam.is_active == True,
+                db.or_(
+                    Exam.subject_id == subject_id,
+                    Lesson.subject_id == subject_id
+                )
+            )
             .order_by(Exam.created_at.desc())
             .all()
         )

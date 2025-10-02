@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request, current_app
 from flask_cors import cross_origin
 from src.models.user import (
-    db, User, Subject, Lesson, Exam, Question, Answer, 
+    db, User, Subject, Lesson, Exam, ExamQuestion, ExamAnswer,
     LessonProgress, ExamAttempt, ActiveSubscription
 )
 from datetime import datetime

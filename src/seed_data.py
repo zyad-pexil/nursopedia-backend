@@ -6,7 +6,7 @@ import os
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from src.models.user import db, User, AcademicYear, Subject, Lesson, Exam, Question, Answer
+from src.models.user import db, User, AcademicYear, Subject, Lesson, Exam, ExamQuestion, ExamAnswer
 from src.main import app
 
 def create_seed_data():
@@ -250,25 +250,21 @@ def create_seed_data():
                 ]
                 
                 for i, q_data in enumerate(questions_data, 1):
-                    question = Question(
+                    question = ExamQuestion(
                         exam_id=anatomy_exam.id,
                         question_text=q_data['question_text'],
-                        question_type='multiple_choice',
-                        order=i,
-                        is_active=True
+                        option_a=q_data['answers'][0]['text'],
+                        option_b=q_data['answers'][1]['text'],
+                        option_c=q_data['answers'][2]['text'],
+                        option_d=q_data['answers'][3]['text'],
+                        correct_answer=next(
+                            (option for option, answer in zip(['A', 'B', 'C', 'D'], q_data['answers']) if answer['is_correct']),
+                            'A'
+                        ),
+                        question_order=i,
+                        points=1.0
                     )
                     db.session.add(question)
-                    db.session.flush()  # للحصول على ID السؤال
-                    
-                    for j, a_data in enumerate(q_data['answers'], 1):
-                        answer = Answer(
-                            question_id=question.id,
-                            answer_text=a_data['text'],
-                            is_correct=a_data['is_correct'],
-                            order=j,
-                            is_active=True
-                        )
-                        db.session.add(answer)
         
         if nursing_subject:
             # امتحان أساسيات التمريض
@@ -282,7 +278,7 @@ def create_seed_data():
                     title='امتحان أساسيات التمريض',
                     description='امتحان على المبادئ الأساسية للتمريض',
                     subject_id=nursing_subject.id,
-                    duration=25,  # 25 دقيقة
+                    duration_minutes=25,
                     max_attempts=3,
                     passing_score=70.0,
                     is_active=True
@@ -313,25 +309,21 @@ def create_seed_data():
                 ]
                 
                 for i, q_data in enumerate(nursing_questions, 1):
-                    question = Question(
+                    question = ExamQuestion(
                         exam_id=nursing_exam.id,
                         question_text=q_data['question_text'],
-                        question_type='multiple_choice',
-                        order=i,
-                        is_active=True
+                        option_a=q_data['answers'][0]['text'],
+                        option_b=q_data['answers'][1]['text'],
+                        option_c=q_data['answers'][2]['text'],
+                        option_d=q_data['answers'][3]['text'],
+                        correct_answer=next(
+                            (option for option, answer in zip(['A', 'B', 'C', 'D'], q_data['answers']) if answer['is_correct']),
+                            'A'
+                        ),
+                        question_order=i,
+                        points=1.0
                     )
                     db.session.add(question)
-                    db.session.flush()
-                    
-                    for j, a_data in enumerate(q_data['answers'], 1):
-                        answer = Answer(
-                            question_id=question.id,
-                            answer_text=a_data['text'],
-                            is_correct=a_data['is_correct'],
-                            order=j,
-                            is_active=True
-                        )
-                        db.session.add(answer)
         
         db.session.commit()
         print("تم إضافة الدروس والامتحانات التجريبية بنجاح!")

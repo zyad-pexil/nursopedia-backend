@@ -320,6 +320,10 @@ with app.app_context():
     ensure_admin_exists()
     ensure_academic_data_seeded()
 
+    # Migrate old questions to new format if needed
+    from src.migrate_questions import migrate_questions_to_exam_questions
+    migrate_questions_to_exam_questions()
+
 # Serve uploaded receipts stored under configurable dir
 @app.route('/uploads/receipts/<path:filename>')
 def serve_receipts(filename):

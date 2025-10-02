@@ -418,40 +418,30 @@ def get_exam_details(exam_id):
         ).count()
         
         exam_data = exam.to_dict()
-        
-        # Get questions with answers in a single query (without correct answers)
-        questions_with_answers = (
-            db.session.query(Question, Answer)
-            .outerjoin(Answer, (Answer.question_id == Question.id) & (Answer.is_active == True))
-            .filter(
-                Question.exam_id == exam.id,
-                Question.is_active == True
-            )
-            .order_by(Question.order.asc(), Answer.order.asc())
+
+        # Get questions with options
+        questions = (
+            ExamQuestion.query
+            .filter_by(exam_id=exam.id)
+            .order_by(ExamQuestion.question_order.asc())
             .all()
         )
 
-        # Group answers by question
-        questions_data = {}
-        for question, answer in questions_with_answers:
-            if question.id not in questions_data:
-                questions_data[question.id] = {
-                    'id': question.id,
-                    'question_text': question.question_text,
-                    'question_type': question.question_type,
-                    'order': question.order,
-                    'answers': []
-                }
+        questions_data = [
+            {
+                'id': question.id,
+                'question_text': question.question_text,
+                'options': {
+                    'A': question.option_a,
+                    'B': question.option_b,
+                    'C': question.option_c,
+                    'D': question.option_d,
+                },
+                'question_order': question.question_order,
+            }
+            for question in questions
+        ]
 
-            if answer:
-                questions_data[question.id]['answers'].append({
-                    'id': answer.id,
-                    'answer_text': answer.answer_text,
-                    'order': answer.order
-                })
-
-        questions_data = list(questions_data.values())
-        
         exam_data['questions'] = questions_data
         # Unlimited attempts; expose first attempt score if exists
         exam_data['remaining_attempts'] = None
@@ -505,28 +495,24 @@ def submit_exam(exam_id):
                 'message': 'إجابات غير صالحة'
             }), 400
         
-        user_answers = data['answers']  # Expected format: {question_id: answer_id}
-        
-        # Get all questions with correct answers in a single query for scoring
-        question_answers = (
-            db.session.query(Question, Answer)
-            .join(Answer, (Answer.question_id == Question.id) & (Answer.is_correct == True) & (Answer.is_active == True))
-            .filter(
-                Question.exam_id == exam.id,
-                Question.is_active == True
-            )
+        user_answers = data['answers']  # Expected format: {question_id: 'A'/'B'/'C'/'D'}
+
+        # Get all questions with correct answers
+        questions = (
+            ExamQuestion.query
+            .filter_by(exam_id=exam.id)
             .all()
         )
 
-        # Create a mapping of question_id to correct answer_id for fast lookup
-        correct_answer_map = {str(question.id): answer.id for question, answer in question_answers}
+        # Create a mapping of question_id to correct answer for fast lookup
+        correct_answer_map = {str(question.id): question.correct_answer for question in questions}
 
         total_questions = len(correct_answer_map)
         correct_answers = 0
 
         # Calculate score
-        for question_id, user_answer_id in user_answers.items():
-            if question_id in correct_answer_map and str(user_answer_id) == str(correct_answer_map[question_id]):
+        for question_id, user_answer in user_answers.items():
+            if question_id in correct_answer_map and str(user_answer).upper() == str(correct_answer_map[question_id]):
                 correct_answers += 1
         
         # Calculate percentage score

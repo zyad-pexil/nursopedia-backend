@@ -56,12 +56,24 @@ try:
             if os.getenv('PG_TUNING_DISABLE', '0') == '1':
                 return
 
-            # Ensure we are on psycopg2 (PostgreSQL) connection
+            # Ensure we are on a PostgreSQL connection (psycopg3 or psycopg2)
+            is_pg = False
             try:
-                import psycopg2
-                if not isinstance(dbapi_connection, psycopg2.extensions.connection):
-                    return
+                import psycopg as psycopg3  # v3
+                from psycopg import Connection as PG3Conn
+                if isinstance(dbapi_connection, PG3Conn):
+                    is_pg = True
             except Exception:
+                pass
+            if not is_pg:
+                try:
+                    import psycopg2  # v2
+                    from psycopg2.extensions import connection as PG2Conn
+                    if isinstance(dbapi_connection, PG2Conn):
+                        is_pg = True
+                except Exception:
+                    pass
+            if not is_pg:
                 return
 
             # Sanitize numeric envs (milliseconds)
@@ -102,17 +114,8 @@ except Exception:
 app = Flask(__name__, static_folder=os.path.join(os.path.dirname(__file__), 'static'))
 app.config['SECRET_KEY'] = 'nursopedia_secret_key_2024_very_secure'
 
-# Configure database URI with SSL for PostgreSQL
-database_url = os.getenv('DATABASE_URL')
-if database_url and database_url.startswith('postgresql://'):
-    # Ensure SSL is enabled for PostgreSQL connections
-    if '?' in database_url:
-        database_url += '&sslmode=require'
-    else:
-        database_url += '?sslmode=require'
-    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
-else:
-    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+# Database URI is normalized and assigned later in the unified builder below.
+# (Removed early assignment to avoid conflicting values and to ensure SSL is appended once.)
 
 # Optional: zero admin dashboard counters for demo/delivery
 app.config['DASHBOARD_ZERO_COUNTS'] = os.getenv('DASHBOARD_ZERO_COUNTS', '0') == '1'
@@ -153,16 +156,31 @@ PGUSER = os.getenv('PGUSER') or os.getenv('POSTGRES_USER')
 PGPASSWORD = os.getenv('PGPASSWORD') or os.getenv('POSTGRES_PASSWORD')
 PGDATABASE = os.getenv('PGDATABASE') or os.getenv('POSTGRES_DB') or os.getenv('POSTGRES_DATABASE')
 
+from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
+
+
+def _ensure_psycopg_and_ssl(uri: str) -> str:
+    # Normalize to psycopg v3 driver and preserve query params
+    if uri.startswith('postgres://'):
+        uri = uri.replace('postgres://', 'postgresql+psycopg://', 1)
+    elif uri.startswith('postgresql://'):
+        uri = uri.replace('postgresql://', 'postgresql+psycopg://', 1)
+
+    # Append sslmode if missing
+    if uri.startswith('postgresql+psycopg://'):
+        parsed = urlparse(uri)
+        q = dict(parse_qsl(parsed.query or "", keep_blank_values=True))
+        if 'sslmode' not in q:
+            q['sslmode'] = os.getenv('PGSSLMODE', 'require')
+        uri = urlunparse(parsed._replace(query=urlencode(q)))
+    return uri
+
+
 db_uri = None
 if _database_url:
-    # normalize scheme/driver for SQLAlchemy (use psycopg for Python 3.13 compatibility)
-    if _database_url.startswith('postgres://'):
-        _database_url = _database_url.replace('postgres://', 'postgresql+psycopg://', 1)
-    elif _database_url.startswith('postgresql://'):
-        _database_url = _database_url.replace('postgresql://', 'postgresql+psycopg://', 1)
-    db_uri = _database_url
+    db_uri = _ensure_psycopg_and_ssl(_database_url)
 elif PGHOST and PGUSER and PGPASSWORD and PGDATABASE:
-    db_uri = f"postgresql+psycopg://{PGUSER}:{PGPASSWORD}@{PGHOST}:{PGPORT}/{PGDATABASE}"
+    db_uri = _ensure_psycopg_and_ssl(f"postgresql+psycopg://{PGUSER}:{PGPASSWORD}@{PGHOST}:{PGPORT}/{PGDATABASE}")
 
 # 2) MySQL (Railway or custom)
 if not db_uri:
@@ -198,6 +216,11 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'max_overflow': int(os.getenv('DB_MAX_OVERFLOW', 20)),  # Increased max overflow
     'pool_timeout': 30,              # timeout for getting connection from pool
     'echo': False,                   # disable SQL logging in production
+    'connect_args': {
+        # Enforce SSL and timeouts for psycopg v3 if applicable
+        'sslmode': os.getenv('PGSSLMODE', 'require'),
+        'connect_timeout': int(os.getenv('PG_CONNECT_TIMEOUT', '10')),
+    }
 }
 
 # Configure max content length if needed (e.g., 10MB receipts)

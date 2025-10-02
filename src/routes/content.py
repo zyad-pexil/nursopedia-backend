@@ -116,6 +116,7 @@ def get_user_subjects():
         }), 200
 
     except Exception as e:
+        current_app.logger.exception("get_user_subjects failed")
         return jsonify({
             'success': False,
             'message': 'حدث خطأ في الخادم'
@@ -174,6 +175,7 @@ def get_subject_lessons(subject_id):
         }), 200
 
     except Exception as e:
+        current_app.logger.exception(f"get_subject_lessons failed: subject_id={subject_id}")
         return jsonify({
             'success': False,
             'message': 'حدث خطأ في الخادم'
@@ -300,6 +302,7 @@ def update_lesson_progress(lesson_id):
         }), 200
         
     except Exception as e:
+        current_app.logger.exception(f"update_lesson_progress failed: lesson_id={lesson_id}")
         return jsonify({
             'success': False,
             'message': 'حدث خطأ في الخادم'
@@ -383,6 +386,7 @@ def get_subject_exams(subject_id):
         }), 200
 
     except Exception as e:
+        current_app.logger.exception(f"get_subject_exams failed: subject_id={subject_id}")
         return jsonify({
             'success': False,
             'message': 'حدث خطأ في الخادم'
@@ -453,6 +457,7 @@ def get_exam_details(exam_id):
         }), 200
         
     except Exception as e:
+        current_app.logger.exception(f"get_exam_details failed: exam_id={exam_id}")
         return jsonify({
             'success': False,
             'message': 'حدث خطأ في الخادم'
@@ -554,6 +559,7 @@ def submit_exam(exam_id):
         }), 200
         
     except Exception as e:
+        current_app.logger.exception(f"submit_exam failed: exam_id={exam_id}")
         return jsonify({
             'success': False,
             'message': 'حدث خطأ في الخادم'
@@ -606,6 +612,7 @@ def get_exam_attempts(exam_id):
         }), 200
         
     except Exception as e:
+        current_app.logger.exception(f"get_exam_attempts failed: exam_id={exam_id}")
         return jsonify({
             'success': False,
             'message': 'حدث خطأ في الخادم'

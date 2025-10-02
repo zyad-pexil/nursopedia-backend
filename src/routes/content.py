@@ -230,6 +230,7 @@ def get_lesson_details(lesson_id):
         }), 200
         
     except Exception as e:
+        current_app.logger.error(f"Error in get_lesson_details (lesson_id={lesson_id}): {str(e)}")
         return jsonify({
             'success': False,
             'message': 'حدث خطأ في الخادم'

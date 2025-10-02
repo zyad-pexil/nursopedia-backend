@@ -76,10 +76,6 @@ try:
             lt = _digits(os.getenv('PG_LOCK_TIMEOUT_MS', '3000'), 3000)
             app_name = os.getenv('PG_APPLICATION_NAME', 'nursopedia-backend')
 
-            prev_autocommit = getattr(dbapi_connection, 'autocommit', None)
-            if prev_autocommit is not None:
-                dbapi_connection.autocommit = True
-
             with dbapi_connection.cursor() as cur:
                 # Avoid parameterization for SET numeric values; set directly
                 cur.execute(f"SET SESSION statement_timeout = {st}")
@@ -92,16 +88,12 @@ try:
                 except Exception:
                     _escaped = app_name.replace("'", "''")
                     cur.execute(f"SET SESSION application_name = '{_escaped}'")
+                # Commit the settings
+                dbapi_connection.commit()
         except Exception:
             # If anything failed, ensure the connection is not left aborted
             try:
                 dbapi_connection.rollback()
-            except Exception:
-                pass
-        finally:
-            try:
-                if prev_autocommit is not None:
-                    dbapi_connection.autocommit = prev_autocommit
             except Exception:
                 pass
 except Exception:

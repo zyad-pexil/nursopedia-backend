@@ -399,8 +399,10 @@ def get_exam_details(exam_id):
     """Get exam details and questions"""
     try:
         user = request.current_user
+        current_app.logger.info(f"get_exam_details called: exam_id={exam_id}, user_id={user.id}")
         
         exam = Exam.query.get_or_404(exam_id)
+        current_app.logger.info(f"Exam found: id={exam.id}, title={exam.title}, subject_id={exam.subject_id}, lesson_id={exam.lesson_id}")
         
         # Determine subject for access: subject-level or via lesson
         subject_id = None
@@ -410,7 +412,10 @@ def get_exam_details(exam_id):
             lesson = Lesson.query.get(exam.lesson_id)
             subject_id = lesson.subject_id if lesson else None
         
+        current_app.logger.info(f"Determined subject_id={subject_id} for exam {exam_id}")
+        
         if not subject_id or not has_subject_access(user.id, subject_id):
+            current_app.logger.warning(f"Access denied for user {user.id} to exam {exam_id} (subject {subject_id})")
             return jsonify({
                 'success': False,
                 'message': 'ليس لديك صلاحية للوصول إلى هذا الامتحان'
@@ -431,6 +436,10 @@ def get_exam_details(exam_id):
             .order_by(ExamQuestion.question_order.asc())
             .all()
         )
+        
+        current_app.logger.info(f"Found {len(questions)} questions for exam {exam_id}")
+        for q in questions:
+            current_app.logger.debug(f"Question {q.id}: order={q.question_order}, text={q.question_text[:50]}...")
 
         questions_data = [
             {
@@ -450,6 +459,8 @@ def get_exam_details(exam_id):
         exam_data['questions'] = questions_data
         # Unlimited attempts; expose first attempt score if exists
         exam_data['remaining_attempts'] = None
+        
+        current_app.logger.info(f"Returning exam {exam_id} with {len(questions_data)} questions")
         
         return jsonify({
             'success': True,

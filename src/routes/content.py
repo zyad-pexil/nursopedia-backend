@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request, current_app
 from flask_cors import cross_origin
 from src.models.user import (
-    db, User, Subject, Lesson, Exam, ExamQuestion, ExamAnswer,
+    db, User, Subject, Lesson, Exam, Question, Answer,
     LessonProgress, ExamAttempt, ActiveSubscription
 )
 from datetime import datetime
@@ -429,32 +429,41 @@ def get_exam_details(exam_id):
         
         exam_data = exam.to_dict()
 
-        # Get questions with options
+        # Get questions with answers (using Question/Answer model, not ExamQuestion)
         questions = (
-            ExamQuestion.query
-            .filter_by(exam_id=exam.id)
-            .order_by(ExamQuestion.question_order.asc())
+            Question.query
+            .filter_by(exam_id=exam.id, is_active=True)
+            .order_by(Question.order.asc())
             .all()
         )
         
         current_app.logger.info(f"Found {len(questions)} questions for exam {exam_id}")
         for q in questions:
-            current_app.logger.debug(f"Question {q.id}: order={q.question_order}, text={q.question_text[:50]}...")
+            current_app.logger.debug(f"Question {q.id}: order={q.order}, text={q.question_text[:50]}...")
 
-        questions_data = [
-            {
+        questions_data = []
+        for question in questions:
+            # Get answers for this question
+            answers = (
+                Answer.query
+                .filter_by(question_id=question.id, is_active=True)
+                .order_by(Answer.order.asc())
+                .all()
+            )
+            
+            # Convert answers to options format (A, B, C, D)
+            options = {}
+            option_keys = ['A', 'B', 'C', 'D']
+            for idx, answer in enumerate(answers[:4]):  # Max 4 options
+                if idx < len(option_keys):
+                    options[option_keys[idx]] = answer.answer_text
+            
+            questions_data.append({
                 'id': question.id,
                 'question_text': question.question_text,
-                'options': {
-                    'A': question.option_a,
-                    'B': question.option_b,
-                    'C': question.option_c,
-                    'D': question.option_d,
-                },
-                'question_order': question.question_order,
-            }
-            for question in questions
-        ]
+                'options': options,
+                'question_order': question.order,
+            })
 
         exam_data['questions'] = questions_data
         # Unlimited attempts; expose first attempt score if exists
@@ -514,15 +523,30 @@ def submit_exam(exam_id):
         
         user_answers = data['answers']  # Expected format: {question_id: 'A'/'B'/'C'/'D'}
 
-        # Get all questions with correct answers
+        # Get all questions with their correct answers (using Question/Answer model)
         questions = (
-            ExamQuestion.query
-            .filter_by(exam_id=exam.id)
+            Question.query
+            .filter_by(exam_id=exam.id, is_active=True)
             .all()
         )
 
-        # Create a mapping of question_id to correct answer for fast lookup
-        correct_answer_map = {str(question.id): question.correct_answer for question in questions}
+        # Build a mapping of question_id to correct answer option (A/B/C/D)
+        correct_answer_map = {}
+        for question in questions:
+            # Get all answers for this question
+            answers = (
+                Answer.query
+                .filter_by(question_id=question.id, is_active=True)
+                .order_by(Answer.order.asc())
+                .all()
+            )
+            
+            # Find which option (A/B/C/D) is correct
+            option_keys = ['A', 'B', 'C', 'D']
+            for idx, answer in enumerate(answers[:4]):
+                if answer.is_correct and idx < len(option_keys):
+                    correct_answer_map[str(question.id)] = option_keys[idx]
+                    break
 
         total_questions = len(correct_answer_map)
         correct_answers = 0

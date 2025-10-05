@@ -950,6 +950,35 @@ def delete_question(question_id):
         db.session.rollback()
         return jsonify({'success': False, 'message': 'حدث خطأ في الخادم'}), 500
 
+@admin_bp.route('/clear-sessions', methods=['POST'])
+@cross_origin()
+@require_admin
+def clear_sessions():
+    """Clear current_session_id for all approved student accounts"""
+    try:
+        # Get approved users (students with approved subscriptions)
+        approved_users = db.session.query(User).join(SubscriptionRequest).filter(
+            SubscriptionRequest.status == 'approved',
+            User.user_type == 'student'
+        ).all()
+
+        for user in approved_users:
+            user.current_session_id = None
+
+        db.session.commit()
+
+        return jsonify({
+            'success': True,
+            'message': f'تم مسح current_session_id لـ {len(approved_users)} حساب'
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': 'حدث خطأ في الخادم'
+        }), 500
+
 # Answers Management
 @admin_bp.route('/answers', methods=['POST'])
 @cross_origin()

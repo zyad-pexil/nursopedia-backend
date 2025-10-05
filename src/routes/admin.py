@@ -954,23 +954,56 @@ def delete_question(question_id):
 @cross_origin()
 @require_admin
 def clear_sessions():
-    """Clear current_session_id for all approved student accounts"""
+    """Clear current_session_id for specific user or all approved student accounts"""
     try:
-        # Get approved users (students with approved subscriptions)
-        approved_users = db.session.query(User).join(SubscriptionRequest).filter(
-            SubscriptionRequest.status == 'approved',
-            User.user_type == 'student'
-        ).all()
+        data = request.get_json() or {}
+        user_id = data.get('user_id')
 
-        for user in approved_users:
+        if user_id:
+            # Clear session for specific user
+            user = User.query.filter_by(id=user_id, user_type='student').first()
+            if not user:
+                return jsonify({
+                    'success': False,
+                    'message': 'المستخدم غير موجود أو ليس طالبًا'
+                }), 404
+
+            # Check if user has approved subscription
+            has_approved = SubscriptionRequest.query.filter_by(
+                user_id=user_id,
+                status='approved'
+            ).first() is not None
+
+            if not has_approved:
+                return jsonify({
+                    'success': False,
+                    'message': 'المستخدم ليس لديه طلب اشتراك مقبول'
+                }), 400
+
             user.current_session_id = None
+            db.session.commit()
 
-        db.session.commit()
+            return jsonify({
+                'success': True,
+                'message': f'تم مسح current_session_id للمستخدم {user.username}'
+            }), 200
 
-        return jsonify({
-            'success': True,
-            'message': f'تم مسح current_session_id لـ {len(approved_users)} حساب'
-        }), 200
+        else:
+            # Clear sessions for all approved users (students with approved subscriptions)
+            approved_users = db.session.query(User).join(SubscriptionRequest).filter(
+                SubscriptionRequest.status == 'approved',
+                User.user_type == 'student'
+            ).all()
+
+            for user in approved_users:
+                user.current_session_id = None
+
+            db.session.commit()
+
+            return jsonify({
+                'success': True,
+                'message': f'تم مسح current_session_id لـ {len(approved_users)} حساب'
+            }), 200
 
     except Exception as e:
         db.session.rollback()

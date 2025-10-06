@@ -797,12 +797,17 @@ def get_subject_exams_admin(subject_id):
 def create_exam():
     try:
         data = request.get_json()
+        print(f"[CREATE_EXAM] Received data: {data}")
+        
         # Allow either subject-level or lesson-level exam
         if not data.get('title') or not data.get('duration_minutes'):
+            print(f"[CREATE_EXAM] Missing title or duration_minutes")
             return jsonify({'success': False, 'message': 'الحقل title و duration_minutes مطلوبة'}), 400
         if not data.get('lesson_id') and not data.get('subject_id'):
+            print(f"[CREATE_EXAM] Missing both lesson_id and subject_id")
             return jsonify({'success': False, 'message': 'يلزم تحديد subject_id (امتحان شامل) أو lesson_id'}), 400
         if data.get('lesson_id') and data.get('subject_id'):
+            print(f"[CREATE_EXAM] Both lesson_id and subject_id provided")
             return jsonify({'success': False, 'message': 'لا يمكن الجمع بين subject_id و lesson_id في نفس الامتحان'}), 400
         
         exam = Exam(
@@ -818,8 +823,12 @@ def create_exam():
         )
         db.session.add(exam)
         db.session.commit()
+        print(f"[CREATE_EXAM] Successfully created exam with id: {exam.id}")
         return jsonify({'success': True, 'exam': exam.to_dict()}), 201
-    except Exception:
+    except Exception as e:
+        print(f"[CREATE_EXAM] Error: {str(e)}")
+        import traceback
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({'success': False, 'message': 'حدث خطأ في الخادم'}), 500
 

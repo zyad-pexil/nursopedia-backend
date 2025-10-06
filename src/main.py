@@ -1,5 +1,6 @@
 import os
 import sys
+from datetime import datetime
 # DON'T CHANGE THIS !!!
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
@@ -131,6 +132,11 @@ CORS(
     }},
     supports_credentials=False,
 )
+
+# Health check endpoint - lightweight API for monitoring
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    return jsonify({'status': 'healthy', 'timestamp': datetime.utcnow().isoformat()}), 200
 
 # Register blueprints
 app.register_blueprint(user_bp, url_prefix='/api')

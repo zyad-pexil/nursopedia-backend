@@ -46,7 +46,7 @@ def require_admin(f):
         # Enforce single active session for admin as well
         token_sid = payload.get('sid')
         if user.current_session_id and token_sid != user.current_session_id:
-            return jsonify({'success': False, 'message': 'تم تسجيل دخول هذا الحساب من جهاز آخر. الرجاء تسجيل الدخول مجدداً.'}), 401
+            return jsonify({'success': False, 'message': 'تم تسجيل دخول هذا الحساب من جهاز آخر.'}), 401
         
         request.current_user = user
         return f(*args, **kwargs)

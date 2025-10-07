@@ -36,7 +36,7 @@ def require_auth(f):
         # Enforce single active session: sid in token must match user's current_session_id
         token_sid = payload.get('sid')
         if user.current_session_id and token_sid != user.current_session_id:
-            return jsonify({'success': False, 'message': 'تم تسجيل دخولك من جهاز آخر. الرجاء تسجيل الدخول مجدداً.'}), 401
+            return jsonify({'success': False, 'message': 'تم تسجيل دخولك من جهاز آخر.'}), 401
         request.current_user = user
         return f(*args, **kwargs)
     decorated.__name__ = f.__name__

@@ -129,14 +129,11 @@ def login():
                 'message': 'حسابك غير مفعل. يرجى انتظار موافقة الإدارة'
             }), 401
         
-        # منع تسجيل الدخول من جهاز ثانٍ إن كانت هناك جلسة فعّالة حديثة
+        # مسح الجلسة الحالية إن وجدت للسماح بتسجيل دخول جديد
         if user.current_session_id:
-            if user.last_login and datetime.utcnow() - user.last_login < timedelta(days=7):
-                return jsonify({
-                    'success': False,
-                    'message': 'هذا الحساب مسجل دخول على جهاز آخر. الرجاء تسجيل الخروج أولاً من الجهاز الآخر.'
-                }), 409
-        # إنشاء جلسة جديدة (أو استبدال القديمة إن كانت منتهية)
+            user.current_session_id = None
+
+        # إنشاء جلسة جديدة
         user.last_login = datetime.utcnow()
         new_session_id = uuid.uuid4().hex  # 32 chars
         user.current_session_id = new_session_id

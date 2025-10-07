@@ -133,13 +133,13 @@ def login():
         if user.current_session_id:
             user.current_session_id = None
             # إنشاء إشعار لإخبار المستخدم بتسجيل الخروج من جهاز آخر
-            notification = Notification(
-                user_id=user.id,
-                title='تم تسجيل خروجك من جهاز آخر',
-                message='تم تسجيل دخولك من جهاز آخر، مما أدى إلى تسجيل خروجك التلقائي من هذا الجهاز.',
-                type='subscription_approved'  # استخدام type موجود مؤقتًا حتى يتم إصلاح migration
-            )
-            db.session.add(notification)
+            # notification = Notification(
+            #     user_id=user.id,
+            #     title='تم تسجيل خروجك من جهاز آخر',
+            #     message='تم تسجيل دخولك من جهاز آخر، مما أدى إلى تسجيل خروجك التلقائي من هذا الجهاز.',
+            #     type='subscription_approved'  # استخدام type موجود مؤقتًا حتى يتم إصلاح migration
+            # )
+            # db.session.add(notification)
 
         # إنشاء جلسة جديدة
         user.last_login = datetime.utcnow()
@@ -156,8 +156,9 @@ def login():
             'token': token,
             'user': user.to_dict()
         }), 200
-        
+
     except Exception as e:
+        print(f"Login error: {str(e)}")  # Temporary debug
         return jsonify({
             'success': False,
             'message': 'حدث خطأ في الخادم'

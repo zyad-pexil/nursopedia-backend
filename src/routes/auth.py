@@ -137,7 +137,7 @@ def login():
                 user_id=user.id,
                 title='تم تسجيل خروجك من جهاز آخر',
                 message='تم تسجيل دخولك من جهاز آخر، مما أدى إلى تسجيل خروجك التلقائي من هذا الجهاز.',
-                type='logged_out_from_another_device'
+                type='subscription_approved'  # استخدام type موجود مؤقتًا حتى يتم إصلاح migration
             )
             db.session.add(notification)
 

@@ -418,7 +418,7 @@ class Notification(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     title = db.Column(db.String(200), nullable=False)
     message = db.Column(db.Text, nullable=False)
-    type = db.Column(db.Enum('subscription_approved', 'subscription_rejected', 'new_lesson', 'new_exam', 'exam_result', name='notification_types'), nullable=False)
+    type = db.Column(db.Enum('subscription_approved', 'subscription_rejected', 'new_lesson', 'new_exam', 'exam_result', 'logged_out_from_another_device', name='notification_types'), nullable=False)
     is_read = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 

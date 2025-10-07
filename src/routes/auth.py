@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, request, current_app
 from flask_cors import cross_origin
-from src.models.user import User, SubscriptionRequest, AcademicYear, Subject, PaymentReceipt, db
+from src.models.user import User, SubscriptionRequest, AcademicYear, Subject, PaymentReceipt, Notification, db
 from datetime import datetime, timedelta
 import jwt
 import os
@@ -129,9 +129,17 @@ def login():
                 'message': 'حسابك غير مفعل. يرجى انتظار موافقة الإدارة'
             }), 401
         
-        # مسح الجلسة الحالية إن وجدت للسماح بتسجيل دخول جديد
+        # مسح الجلسة الحالية إن وجدت للسماح بتسجيل دخول جديد، وإنشاء إشعار
         if user.current_session_id:
             user.current_session_id = None
+            # إنشاء إشعار لإخبار المستخدم بتسجيل الخروج من جهاز آخر
+            notification = Notification(
+                user_id=user.id,
+                title='تم تسجيل خروجك من جهاز آخر',
+                message='تم تسجيل دخولك من جهاز آخر، مما أدى إلى تسجيل خروجك التلقائي من هذا الجهاز.',
+                type='logged_out_from_another_device'
+            )
+            db.session.add(notification)
 
         # إنشاء جلسة جديدة
         user.last_login = datetime.utcnow()

@@ -586,7 +586,37 @@ def submit_exam(exam_id):
         # Determine grade to count: only first attempt
         first_attempt = ExamAttempt.query.filter_by(user_id=user.id, exam_id=exam.id, attempt_number=1).first()
         counted_score = float(first_attempt.score) if first_attempt and first_attempt.score is not None else float(score)
-        
+
+        # Build detailed answer feedback
+        answer_feedback = []
+        for question in questions:
+            question_id_str = str(question.id)
+            user_answer = user_answers.get(question_id_str)
+            correct_answer = correct_answer_map.get(question_id_str)
+
+            # Get answer options with labels
+            answers = (
+                Answer.query
+                .filter_by(question_id=question.id, is_active=True)
+                .order_by(Answer.order.asc())
+                .all()
+            )
+
+            options = {}
+            option_keys = ['A', 'B', 'C', 'D']
+            for idx, answer in enumerate(answers[:4]):
+                if idx < len(option_keys):
+                    options[option_keys[idx]] = answer.answer_text
+
+            answer_feedback.append({
+                'question_id': question.id,
+                'question_text': question.question_text,
+                'user_answer': user_answer,
+                'correct_answer': correct_answer,
+                'is_correct': str(user_answer).upper() == str(correct_answer),
+                'options': options
+            })
+
         return jsonify({
             'success': True,
             'message': 'تم تسليم الامتحان بنجاح',
@@ -595,7 +625,8 @@ def submit_exam(exam_id):
             'counted': attempt_number == 1,
             'correct_answers': correct_answers,
             'total_questions': total_questions,
-            'passed': float(score) >= float(exam.passing_score)
+            'passed': float(score) >= float(exam.passing_score),
+            'answer_feedback': answer_feedback
         }), 200
         
     except Exception as e:

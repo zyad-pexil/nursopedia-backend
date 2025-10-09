@@ -192,8 +192,6 @@ def get_exam_results():
         ExamAttempt.percentage.isnot(None)
     ).all()
 
-    print(f"Found {len(attempts)} attempts for user {user.id}")
-
     results = []
     for attempt in attempts:
         exam = attempt.exam
@@ -208,8 +206,6 @@ def get_exam_results():
             subject = Subject.query.get(subject_id)
             subject_name = subject.name if subject else None
 
-        print(f"Attempt {attempt.id}: subject_id={subject_id}, subject_name={subject_name}")
-
         if subject_name:
             results.append({
                 'subject_id': subject_id,
@@ -219,8 +215,6 @@ def get_exam_results():
                 'passed': attempt.is_passed,
                 'date': attempt.end_time.isoformat() if attempt.end_time else None
             })
-
-    print(f"Returning {len(results)} results")
 
     return jsonify({'success': True, 'results': results})
 

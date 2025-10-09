@@ -1257,3 +1257,50 @@ def get_admin_student_profile(student_id):
     except Exception as e:
         return jsonify({'success': False, 'message': 'حدث خطأ في الخادم'}), 500
 
+@admin_bp.route('/users/<int:student_id>/exam-results', methods=['GET'])
+@cross_origin()
+@require_admin
+def get_admin_student_exam_results(student_id):
+    """Get exam results for a specific student (admin view)"""
+    try:
+        student = User.query.get_or_404(student_id)
+        if student.user_type != 'student':
+            return jsonify({'success': False, 'message': 'المستخدم ليس طالباً'}), 400
+
+        # Get all completed exam attempts with exam and subject details
+        attempts = ExamAttempt.query.join(Exam, ExamAttempt.exam_id == Exam.id).filter(
+            ExamAttempt.user_id == student.id,
+            ExamAttempt.is_completed == True,
+            ExamAttempt.percentage.isnot(None)
+        ).all()
+
+        results = []
+        for attempt in attempts:
+            exam = attempt.exam
+            subject_id = exam.subject_id
+            subject_name = None
+            if subject_id:
+                subject = Subject.query.get(subject_id)
+                subject_name = subject.name if subject else None
+            elif exam.lesson_id:
+                # If exam is lesson-level, get subject from lesson
+                lesson = Lesson.query.get(exam.lesson_id)
+                if lesson:
+                    subject_id = lesson.subject_id
+                    subject = Subject.query.get(subject_id)
+                    subject_name = subject.name if subject else None
+
+            if subject_name:
+                results.append({
+                    'subject_id': subject_id,
+                    'subject_name': subject_name,
+                    'exam_title': attempt.exam.title,
+                    'score': float(attempt.percentage),
+                    'passed': attempt.is_passed,
+                    'date': attempt.end_time.isoformat() if attempt.end_time else None
+                })
+
+        return jsonify({'success': True, 'results': results}), 200
+    except Exception as e:
+        return jsonify({'success': False, 'message': 'حدث خطأ في الخادم'}), 500
+

@@ -3,7 +3,7 @@ from flask_cors import cross_origin
 from datetime import datetime
 import jwt
 import os
-from src.models.user import User, db, ActiveSubscription, Subject, ExamAttempt, LessonProgress, Notification, AdditionalSubjectRequest
+from src.models.user import User, db, ActiveSubscription, Subject, Exam, ExamAttempt, Lesson, LessonProgress, Notification, AdditionalSubjectRequest
 
 user_bp = Blueprint('user', __name__)
 
@@ -179,6 +179,50 @@ def unread_notifications_count():
     user = request.current_user
     count = Notification.query.filter_by(user_id=user.id, is_read=False).count()
     return jsonify({'success': True, 'count': count})
+
+@user_bp.route('/me/exam-results', methods=['GET'])
+@cross_origin()
+@require_auth
+def get_exam_results():
+    user = request.current_user
+    # Get all completed exam attempts with exam and subject details
+    attempts = ExamAttempt.query.join(Exam, ExamAttempt.exam_id == Exam.id).filter(
+        ExamAttempt.user_id == user.id,
+        ExamAttempt.is_completed == True,
+        ExamAttempt.percentage.isnot(None)
+    ).all()
+
+    print(f"Found {len(attempts)} attempts for user {user.id}")
+
+    results = []
+    for attempt in attempts:
+        exam = attempt.exam
+        subject_id = exam.subject_id
+        subject_name = None
+        if subject_id:
+            subject = Subject.query.get(subject_id)
+            subject_name = subject.name if subject else None
+        elif exam.lesson:
+            # If exam is lesson-level, get subject from lesson
+            subject_id = exam.lesson.subject_id
+            subject = Subject.query.get(subject_id)
+            subject_name = subject.name if subject else None
+
+        print(f"Attempt {attempt.id}: subject_id={subject_id}, subject_name={subject_name}")
+
+        if subject_name:
+            results.append({
+                'subject_id': subject_id,
+                'subject_name': subject_name,
+                'exam_title': attempt.exam.title,
+                'score': float(attempt.percentage),
+                'passed': attempt.is_passed,
+                'date': attempt.end_time.isoformat() if attempt.end_time else None
+            })
+
+    print(f"Returning {len(results)} results")
+
+    return jsonify({'success': True, 'results': results})
 
 
 @user_bp.route('/me/available-subjects', methods=['GET'])

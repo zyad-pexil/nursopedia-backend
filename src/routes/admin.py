@@ -19,11 +19,11 @@ admin_bp = Blueprint('admin', __name__)
 def verify_token(token):
     try:
         payload = jwt.decode(token, current_app.config['SECRET_KEY'], algorithms=['HS256'])
-        return payload  # return payload to check session id
+        return {'success': True, 'payload': payload}
     except jwt.ExpiredSignatureError:
-        return None
+        return {'success': False, 'error': 'expired'}
     except jwt.InvalidTokenError:
-        return None
+        return {'success': False, 'error': 'invalid'}
 
 # Decorator to require admin authentication
 def require_admin(f):
@@ -35,10 +35,14 @@ def require_admin(f):
         if token.startswith('Bearer '):
             token = token[7:]
         
-        payload = verify_token(token)
-        if not payload:
-            return jsonify({'success': False, 'message': 'رمز المصادقة غير صالح'}), 401
+        result = verify_token(token)
+        if not result['success']:
+            if result['error'] == 'expired':
+                return jsonify({'success': False, 'message': 'انتهت صلاحية الجلسة'}), 401
+            else:
+                return jsonify({'success': False, 'message': 'رمز المصادقة غير صالح'}), 401
         
+        payload = result['payload']
         user = User.query.get(payload.get('user_id'))
         if not user or not user.is_active or user.user_type != 'admin':
             return jsonify({'success': False, 'message': 'ليس لديك صلاحية الوصول لهذه الصفحة'}), 403

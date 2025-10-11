@@ -49,7 +49,7 @@ def verify_token(token):
         payload = jwt.decode(token, current_app.config['SECRET_KEY'], algorithms=['HS256'])
         return payload['user_id'], payload.get('sid')
     except jwt.ExpiredSignatureError:
-        return None, None
+        return 'expired', None
     except jwt.InvalidTokenError:
         return None, None
 
@@ -510,7 +510,13 @@ def verify_user_token():
                 'message': 'رمز المصادقة مطلوب'
             }), 400
         
-        user_id = verify_token(data['token'])
+        user_id, sid = verify_token(data['token'])
+        
+        if user_id == 'expired':
+            return jsonify({
+                'success': False,
+                'message': 'انتهت صلاحية الجلسة'
+            }), 401
         
         if not user_id:
             return jsonify({

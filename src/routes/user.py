@@ -12,11 +12,11 @@ user_bp = Blueprint('user', __name__)
 def verify_token(token):
     try:
         payload = jwt.decode(token, current_app.config['SECRET_KEY'], algorithms=['HS256'])
-        return payload  # return full payload to check session id
+        return {'success': True, 'payload': payload}
     except jwt.ExpiredSignatureError:
-        return None
+        return {'success': False, 'error': 'expired'}
     except jwt.InvalidTokenError:
-        return None
+        return {'success': False, 'error': 'invalid'}
 
 # Decorator to require auth
 
@@ -27,9 +27,13 @@ def require_auth(f):
             return jsonify({'success': False, 'message': 'رمز المصادقة مطلوب'}), 401
         if token.startswith('Bearer '):
             token = token[7:]
-        payload = verify_token(token)
-        if not payload:
-            return jsonify({'success': False, 'message': 'رمز المصادقة غير صالح'}), 401
+        result = verify_token(token)
+        if not result['success']:
+            if result['error'] == 'expired':
+                return jsonify({'success': False, 'message': 'انتهت صلاحية الجلسة'}), 401
+            else:
+                return jsonify({'success': False, 'message': 'رمز المصادقة غير صالح'}), 401
+        payload = result['payload']
         user = User.query.get(payload.get('user_id'))
         if not user or not user.is_active:
             return jsonify({'success': False, 'message': 'المستخدم غير موجود أو غير مفعل'}), 401

@@ -37,7 +37,7 @@ auth_bp = Blueprint('auth', __name__)
 def generate_token(user_id, session_id=None):
     payload = {
         'user_id': user_id,
-        'exp': datetime.utcnow() + timedelta(days=7)  # Token expires in 7 days
+        'exp': datetime.utcnow() + timedelta(minutes=1)  # Token expires in 7 days
     }
     if session_id:
         payload['sid'] = session_id

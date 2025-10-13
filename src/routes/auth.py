@@ -276,7 +276,7 @@ def register():
             'total_amount': total_amount,
             'discount_applied': discount_applied,
             'discount_amount': 50.0 if discount_applied else 0.0,
-            'payment_number': '01080938298',
+            'payment_number': '01013170942',
             'user_id': user.id
         }), 201
         

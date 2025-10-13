@@ -10,6 +10,10 @@ import os
 import time
 from werkzeug.utils import secure_filename
 from sqlalchemy.exc import IntegrityError
+try:
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+except ImportError:  # pragma: no cover - dialect optional in some environments
+    pg_insert = None
 
 content_bp = Blueprint('content', __name__)
 
@@ -231,28 +235,45 @@ def get_lesson_details(lesson_id):
         ).first()
 
         if not progress:
-            progress = LessonProgress(
-                user_id=user.id,
-                lesson_id=lesson.id,
-                watch_time_seconds=0,
-                is_completed=False
-            )
-            db.session.add(progress)
-            try:
+            if pg_insert is not None:
+                insert_stmt = pg_insert(LessonProgress.__table__).values(
+                    user_id=user.id,
+                    lesson_id=lesson.id,
+                    watch_time_seconds=0,
+                    completion_percentage=0,
+                    is_completed=False,
+                    first_accessed_at=datetime.utcnow(),
+                    last_accessed_at=None
+                ).on_conflict_do_nothing()
+                db.session.execute(insert_stmt)
                 db.session.commit()
-            except IntegrityError:
-                current_app.logger.warning(
-                    "Duplicate lesson_progress detected; fetching existing record",
-                    extra={
-                        'lesson_id': lesson.id,
-                        'user_id': user.id
-                    }
-                )
-                db.session.rollback()
                 progress = LessonProgress.query.filter_by(
                     user_id=user.id,
                     lesson_id=lesson.id
                 ).first()
+            else:
+                progress = LessonProgress(
+                    user_id=user.id,
+                    lesson_id=lesson.id,
+                    watch_time_seconds=0,
+                    is_completed=False
+                )
+                db.session.add(progress)
+                try:
+                    db.session.commit()
+                except IntegrityError:
+                    current_app.logger.warning(
+                        "Duplicate lesson_progress detected; fetching existing record",
+                        extra={
+                            'lesson_id': lesson.id,
+                            'user_id': user.id
+                        }
+                    )
+                    db.session.rollback()
+                    progress = LessonProgress.query.filter_by(
+                        user_id=user.id,
+                        lesson_id=lesson.id
+                    ).first()
 
         lesson_data['progress'] = {
             'completed': progress.is_completed if progress else False,
@@ -295,23 +316,63 @@ def update_lesson_progress(lesson_id):
             user_id=user.id,
             lesson_id=lesson.id
         ).first()
-        
+
         if not progress:
-            progress = LessonProgress(
+            if pg_insert is not None:
+                insert_stmt = pg_insert(LessonProgress.__table__).values(
+                    user_id=user.id,
+                    lesson_id=lesson.id,
+                    watch_time_seconds=0,
+                    completion_percentage=0,
+                    is_completed=False,
+                    first_accessed_at=datetime.utcnow(),
+                    last_accessed_at=None
+                ).on_conflict_do_nothing()
+                db.session.execute(insert_stmt)
+                db.session.commit()
+                progress = LessonProgress.query.filter_by(
+                    user_id=user.id,
+                    lesson_id=lesson.id
+                ).first()
+            else:
+                progress = LessonProgress(
+                    user_id=user.id,
+                    lesson_id=lesson.id
+                )
+                db.session.add(progress)
+                try:
+                    db.session.commit()
+                except IntegrityError:
+                    current_app.logger.warning(
+                        "Duplicate lesson_progress detected in update; fetching existing record",
+                        extra={
+                            'lesson_id': lesson.id,
+                            'user_id': user.id
+                        }
+                    )
+                    db.session.rollback()
+                    progress = LessonProgress.query.filter_by(
+                        user_id=user.id,
+                        lesson_id=lesson.id
+                    ).first()
+
+        # Ensure we have a fresh instance attached to the current session
+        if not progress:
+            progress = LessonProgress.query.filter_by(
                 user_id=user.id,
                 lesson_id=lesson.id
-            )
-            db.session.add(progress)
-        
+            ).with_for_update(nowait=False).first()
+
         # Update progress
-        if 'watch_time' in data:
+        if 'watch_time' in data and progress:
             progress.watch_time_seconds = data['watch_time']
-        
-        if 'completed' in data:
+
+        if 'completed' in data and progress:
             progress.is_completed = data['completed']
-        
-        progress.last_accessed_at = datetime.utcnow()
-        
+
+        if progress:
+            progress.last_accessed_at = datetime.utcnow()
+
         db.session.commit()
 
         # Invalidate cached lessons list for this user+subject to reflect progress updates

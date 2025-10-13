@@ -9,6 +9,7 @@ import jwt
 import os
 import time
 from werkzeug.utils import secure_filename
+from sqlalchemy.exc import IntegrityError
 
 content_bp = Blueprint('content', __name__)
 
@@ -228,7 +229,7 @@ def get_lesson_details(lesson_id):
             user_id=user.id,
             lesson_id=lesson.id
         ).first()
-        
+
         if not progress:
             progress = LessonProgress(
                 user_id=user.id,
@@ -237,19 +238,33 @@ def get_lesson_details(lesson_id):
                 is_completed=False
             )
             db.session.add(progress)
-            db.session.commit()
-        
+            try:
+                db.session.commit()
+            except IntegrityError:
+                current_app.logger.warning(
+                    "Duplicate lesson_progress detected; fetching existing record",
+                    extra={
+                        'lesson_id': lesson.id,
+                        'user_id': user.id
+                    }
+                )
+                db.session.rollback()
+                progress = LessonProgress.query.filter_by(
+                    user_id=user.id,
+                    lesson_id=lesson.id
+                ).first()
+
         lesson_data['progress'] = {
-            'completed': progress.is_completed,
-            'watch_time': progress.watch_time_seconds,
-            'last_watched': progress.last_accessed_at.isoformat() if progress.last_accessed_at else None
+            'completed': progress.is_completed if progress else False,
+            'watch_time': progress.watch_time_seconds if progress else 0,
+            'last_watched': progress.last_accessed_at.isoformat() if (progress and progress.last_accessed_at) else None
         }
-        
+
         return jsonify({
             'success': True,
             'lesson': lesson_data
         }), 200
-        
+
     except Exception as e:
         current_app.logger.error(f"Error in get_lesson_details (lesson_id={lesson_id}): {str(e)}")
         return jsonify({

@@ -18,6 +18,7 @@ from src.models.user import db
 from flask_migrate import Migrate
 from sqlalchemy import text, event
 from sqlalchemy.engine import Engine
+from sqlalchemy.pool import NullPool
 from src.routes.user import user_bp
 from src.routes.auth import auth_bp
 from src.routes.content import content_bp
@@ -216,12 +217,8 @@ app.config['SQLALCHEMY_COMMIT_ON_TEARDOWN'] = False
 
 # Configure engine/pool options to better handle cold starts on Railway
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-    'pool_pre_ping': True,           # validate connections before use
-    'pool_recycle': 280,             # recycle before MySQL 8 default wait_timeout (in secs)
-    'pool_size': int(os.getenv('DB_POOL_SIZE', 10)),  # Increased pool size for better performance
-    'max_overflow': int(os.getenv('DB_MAX_OVERFLOW', 20)),  # Increased max overflow
-    'pool_timeout': 30,              # timeout for getting connection from pool
-    'echo': False,                   # disable SQL logging in production
+    'poolclass': NullPool,  # disable SQLAlchemy connection pooling (use Transaction Pooler only)
+    'echo': False,
     'connect_args': {
         # Enforce SSL and timeouts for psycopg v3 if applicable
         'sslmode': os.getenv('PGSSLMODE', 'require'),

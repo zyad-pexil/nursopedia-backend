@@ -288,13 +288,17 @@ def approve_additional_subject_request(req_id):
     if req.status != 'pending':
         return jsonify({'success': False, 'message': 'تمت مراجعة الطلب مسبقاً'}), 400
 
+    subject = Subject.query.get(req.subject_id)
+    if not subject:
+        return jsonify({'success': False, 'message': 'المادة المطلوبة غير موجودة'}), 404
+
     # Create ActiveSubscription if not exists
     existing = ActiveSubscription.query.filter_by(user_id=req.user_id, subject_id=req.subject_id).first()
     if not existing:
         # Create a light SubscriptionRequest record to maintain FK integrity
         sr = SubscriptionRequest(
             user_id=req.user_id,
-            academic_year_id=Subject.query.get(req.subject_id).academic_year_id if Subject.query.get(req.subject_id) else None,
+            academic_year_id=subject.academic_year_id,
             selected_subjects=json.dumps([req.subject_id]),
             total_amount=0,
             status='approved',
@@ -322,7 +326,9 @@ def approve_additional_subject_request(req_id):
         note = Notification(
             user_id=req.user_id,
             title='تم قبول طلب إضافة مادة',
-            description='تمت الموافقة على طلبك لإضافة المادة.'
+            message='تمت الموافقة على طلبك لإضافة المادة.',
+            type='subscription_approved',
+            is_read=False
         )
         db.session.add(note)
     except Exception:
@@ -351,7 +357,9 @@ def reject_additional_subject_request(req_id):
         note = Notification(
             user_id=req.user_id,
             title='تم رفض طلب إضافة مادة',
-            description=req.admin_notes or 'نأسف، تم رفض الطلب.'
+            message=req.admin_notes or 'نأسف، تم رفض الطلب.',
+            type='subscription_rejected',
+            is_read=False
         )
         db.session.add(note)
     except Exception:

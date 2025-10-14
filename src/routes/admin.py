@@ -301,6 +301,7 @@ def approve_additional_subject_request(req_id):
             academic_year_id=subject.academic_year_id,
             selected_subjects=json.dumps([req.subject_id]),
             total_amount=0,
+            payment_receipt_url=None,
             status='approved',
             created_at=datetime.utcnow(),
             reviewed_at=datetime.utcnow(),

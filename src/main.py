@@ -90,20 +90,34 @@ try:
             lt = _digits(os.getenv('PG_LOCK_TIMEOUT_MS', '10000'), 10000)  # Increased to 10s
             app_name = os.getenv('PG_APPLICATION_NAME', 'nursopedia-backend')
 
-            with dbapi_connection.cursor() as cur:
-                # Avoid parameterization for SET numeric values; set directly
-                cur.execute(f"SET SESSION statement_timeout = {st}")
-                cur.execute(f"SET SESSION idle_in_transaction_session_timeout = {ixt}")
-                cur.execute(f"SET SESSION lock_timeout = {lt}")
-                cur.execute("SET SESSION TIME ZONE 'UTC'")
-                # application_name: prefer param, fallback to quoted string
+            autocommit_supported = hasattr(dbapi_connection, "autocommit")
+            previous_autocommit = None
+            if autocommit_supported:
                 try:
-                    cur.execute("SET SESSION application_name = %s", (app_name,))
+                    previous_autocommit = dbapi_connection.autocommit
                 except Exception:
+                    previous_autocommit = None
+                else:
+                    if previous_autocommit is not True:
+                        dbapi_connection.autocommit = True
+
+            try:
+                with dbapi_connection.cursor() as cur:
+                    # Avoid parameterization for SET numeric values; set directly
+                    cur.execute(f"SET SESSION statement_timeout = {st}")
+                    cur.execute(f"SET SESSION idle_in_transaction_session_timeout = {ixt}")
+                    cur.execute(f"SET SESSION lock_timeout = {lt}")
+                    cur.execute("SET SESSION TIME ZONE 'UTC'")
+                    # application_name cannot be parameterized safely here; escape and inline
                     _escaped = app_name.replace("'", "''")
                     cur.execute(f"SET SESSION application_name = '{_escaped}'")
-                # Commit the settings
-                dbapi_connection.commit()
+            finally:
+                if (
+                    autocommit_supported
+                    and previous_autocommit is not None
+                    and dbapi_connection.autocommit != previous_autocommit
+                ):
+                    dbapi_connection.autocommit = previous_autocommit
         except Exception:
             # If anything failed, ensure the connection is not left aborted
             try:

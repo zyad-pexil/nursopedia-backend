@@ -697,6 +697,9 @@ def submit_exam(exam_id):
                 'options': options
             })
 
+        is_special_exam = exam.id == 29
+        is_first_attempt = attempt_number == 1
+        
         return jsonify({
             'success': True,
             'message': 'تم تسليم الامتحان بنجاح',
@@ -706,7 +709,9 @@ def submit_exam(exam_id):
             'correct_answers': correct_answers,
             'total_questions': total_questions,
             'passed': float(score) >= float(exam.passing_score),
-            'answer_feedback': answer_feedback
+            'answer_feedback': answer_feedback,
+            'is_special_exam': is_special_exam,
+            'is_first_attempt': is_first_attempt
         }), 200
         
     except Exception as e:
